@@ -1,0 +1,25 @@
+# Dépendances
+/vendor/
+
+# Configuration sensible (credentials)
+/config/database.php
+/config/providers.php
+
+# Données persistantes
+/storage/logs/
+/storage/cache/
+/storage/uploads/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# PHP
+*.log

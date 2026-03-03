@@ -1,0 +1,123 @@
+/* ── MSP Consolidator — Custom Styles ───────────────────────── */
+
+/* Sidebar */
+#sidebar {
+    transition: width 0.2s ease;
+    background-color: var(--bs-body-bg);
+}
+
+#sidebar .nav-link {
+    color: var(--bs-body-color);
+    border-radius: 0.375rem;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.9rem;
+    transition: background-color 0.15s ease;
+}
+
+#sidebar .nav-link:hover {
+    background-color: var(--bs-secondary-bg);
+}
+
+#sidebar .nav-link.active {
+    background-color: var(--bs-primary);
+    color: #fff;
+}
+
+#sidebar .nav-link.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Tables */
+.table {
+    font-size: 0.875rem;
+}
+
+.table th {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Monospace license keys */
+.font-monospace {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.8em;
+}
+
+/* Progress bars */
+.progress {
+    border-radius: 2px;
+}
+
+/* Cards */
+.card {
+    border-radius: 0.5rem;
+}
+
+/* Badge small variant */
+.badge.small {
+    font-size: 0.65em;
+}
+
+/* Buttons xs */
+.btn-xs {
+    padding: 0.1rem 0.4rem;
+    font-size: 0.75rem;
+}
+
+/* Main content */
+main {
+    min-height: calc(100vh - 60px);
+}
+
+/* Breadcrumb */
+.breadcrumb {
+    --bs-breadcrumb-padding-x: 0;
+    --bs-breadcrumb-padding-y: 0;
+    --bs-breadcrumb-margin-bottom: 0;
+}
+
+/* ── Dark mode overrides ───────────────────────────────────── */
+[data-bs-theme="dark"] {
+    --bs-body-bg: #121212;
+    --bs-secondary-bg: #1e1e1e;
+}
+
+[data-bs-theme="dark"] #sidebar {
+    border-color: #2d2d2d !important;
+}
+
+[data-bs-theme="dark"] .table-dark th {
+    background-color: #1a1a2e;
+}
+
+[data-bs-theme="dark"] .card.bg-body-secondary {
+    background-color: #1e1e1e !important;
+}
+
+[data-bs-theme="dark"] header.border-bottom,
+[data-bs-theme="dark"] footer.border-top {
+    border-color: #2d2d2d !important;
+}
+
+/* ── Light mode ────────────────────────────────────────────── */
+[data-bs-theme="light"] {
+    --bs-body-bg: #f8f9fa;
+    --bs-secondary-bg: #ffffff;
+}
+
+[data-bs-theme="light"] .card.bg-body-secondary {
+    background-color: #ffffff !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+/* ── Spinner overlay for sync ──────────────────────────────── */
+#syncOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}

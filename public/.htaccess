@@ -1,0 +1,14 @@
+Options -Indexes
+
+# Timeout étendu pour la synchronisation ESET (synchrone, peut prendre plusieurs minutes)
+php_value max_execution_time 600
+php_value max_input_time 600
+
+RewriteEngine On
+
+# Ne pas rediriger les fichiers/dossiers existants (assets CSS/JS/images)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Tout router vers index.php
+RewriteRule ^ index.php [L]
