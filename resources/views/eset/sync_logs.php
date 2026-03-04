@@ -1,5 +1,15 @@
 <?php
 /** @var array $logs */
+/** @var string $sortBy */
+/** @var string $sortDir */
+
+function syncSortLink(string $col, string $current, string $dir, string $label): string {
+    $newDir = ($current === $col && $dir === 'DESC') ? 'ASC' : 'DESC';
+    $icon   = $current === $col ? ($dir === 'ASC' ? ' ↑' : ' ↓') : '';
+    $params = ['sort' => $col, 'dir' => $newDir];
+    return '<a href="/eset/sync-logs?' . http_build_query($params) . '" class="text-white text-decoration-none">'
+         . htmlspecialchars($label) . $icon . '</a>';
+}
 ?>
 
 <div class="d-flex align-items-center justify-content-between mb-4">
@@ -19,14 +29,14 @@
     <table class="table table-hover table-sm align-middle">
         <thead class="table-dark">
             <tr>
-                <th>Démarrage</th>
-                <th>Fin</th>
+                <th><?= syncSortLink('started', $sortBy, $sortDir, 'Démarrage') ?></th>
+                <th><?= syncSortLink('finished', $sortBy, $sortDir, 'Fin') ?></th>
                 <th>Durée</th>
-                <th class="text-center">Déclencheur</th>
-                <th class="text-center">État</th>
-                <th class="text-center">Récupérés</th>
-                <th class="text-center">Créés</th>
-                <th class="text-center">Mis à jour</th>
+                <th class="text-center"><?= syncSortLink('trigger', $sortBy, $sortDir, 'Déclencheur') ?></th>
+                <th class="text-center"><?= syncSortLink('status', $sortBy, $sortDir, 'État') ?></th>
+                <th class="text-center"><?= syncSortLink('fetched', $sortBy, $sortDir, 'Récupérés') ?></th>
+                <th class="text-center"><?= syncSortLink('created', $sortBy, $sortDir, 'Créés') ?></th>
+                <th class="text-center"><?= syncSortLink('updated', $sortBy, $sortDir, 'Mis à jour') ?></th>
                 <th>Message d'erreur</th>
             </tr>
         </thead>

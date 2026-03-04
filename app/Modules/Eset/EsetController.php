@@ -128,12 +128,26 @@ class EsetController extends Controller
      */
     public function syncLogs(array $params = []): void
     {
+        $sortBy  = $_GET['sort'] ?? 'started';
+        $sortDir = strtoupper($_GET['dir'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
+
+        $allowedSorts = [
+            'started'  => 'sl.started_at',
+            'finished' => 'sl.finished_at',
+            'trigger'  => 'sl.triggered_by',
+            'status'   => 'sl.status',
+            'fetched'  => 'sl.records_fetched',
+            'created'  => 'sl.records_created',
+            'updated'  => 'sl.records_updated',
+        ];
+        $orderCol = $allowedSorts[$sortBy] ?? 'sl.started_at';
+
         $logs = $this->db->fetchAll(
             "SELECT sl.*, p.name AS provider_name
              FROM sync_logs sl
              JOIN providers p ON p.id = sl.provider_id
              WHERE p.code = 'eset'
-             ORDER BY sl.started_at DESC
+             ORDER BY $orderCol $sortDir
              LIMIT 100"
         );
 
@@ -141,6 +155,8 @@ class EsetController extends Controller
             'pageTitle'   => 'Historique sync ESET',
             'breadcrumbs' => ['Dashboard' => '/', 'ESET' => '/eset/licenses', 'Sync logs' => null],
             'logs'        => $logs,
+            'sortBy'      => $sortBy,
+            'sortDir'     => $sortDir,
         ]);
     }
 

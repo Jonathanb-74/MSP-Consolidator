@@ -23,9 +23,20 @@ class ClientController extends Controller
     {
         $search  = trim($_GET['search'] ?? '');
         $tagId   = (int)($_GET['tag'] ?? 0);
+        $sortBy  = $_GET['sort'] ?? 'name';
+        $sortDir = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
         $page    = max(1, (int)($_GET['page'] ?? 1));
         $perPage = 50;
         $offset  = ($page - 1) * $perPage;
+
+        $allowedSorts = [
+            'client_number'  => 'c.client_number',
+            'name'           => 'c.name',
+            'email'          => 'c.email',
+            'providers'      => 'provider_count',
+            'status'         => 'c.is_active',
+        ];
+        $orderCol = $allowedSorts[$sortBy] ?? 'c.name';
 
         [$whereSql, $whereParams] = $this->buildWhere($search, $tagId);
 
@@ -47,7 +58,7 @@ class ClientController extends Controller
              LEFT JOIN client_tags ct ON ct.client_id = c.id
              $whereSql
              GROUP BY c.id
-             ORDER BY c.name ASC
+             ORDER BY $orderCol $sortDir
              LIMIT $perPage OFFSET $offset",
             $whereParams
         );
@@ -66,6 +77,8 @@ class ClientController extends Controller
             'search'      => $search,
             'tagId'       => $tagId,
             'allTags'     => $allTags,
+            'sortBy'      => $sortBy,
+            'sortDir'     => $sortDir,
         ]);
     }
 

@@ -11,6 +11,16 @@
 /** @var string $confirmed */
 /** @var int|null $minScore */
 /** @var array $autoConfirmPreview */
+/** @var string $sortBy */
+/** @var string $sortDir */
+
+function mappingSortLink(string $col, string $current, string $dir, string $label, array $queryParams): string {
+    $newDir = ($current === $col && $dir === 'ASC') ? 'DESC' : 'ASC';
+    $icon   = $current === $col ? ($dir === 'ASC' ? ' ↑' : ' ↓') : '';
+    $params = array_merge($queryParams, ['sort' => $col, 'dir' => $newDir]);
+    return '<a href="/mapping?' . http_build_query($params) . '" class="text-white text-decoration-none">'
+         . htmlspecialchars($label) . $icon . '</a>';
+}
 ?>
 
 <div class="d-flex align-items-center justify-content-between mb-4">
@@ -72,16 +82,17 @@
         <h5 class="mb-3">Mappings existants</h5>
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle" id="mappingTable">
+                <?php $mqp = ['provider' => $provider, 'search' => $search, 'confirmed' => $confirmed, 'min_score' => $minScore ?? '']; ?>
                 <thead class="table-dark">
                     <tr>
                         <th style="width:36px">
                             <input type="checkbox" id="selectAll" class="form-check-input" title="Tout sélectionner">
                         </th>
-                        <th>Company fournisseur</th>
-                        <th>Client interne</th>
-                        <th>Méthode</th>
-                        <th class="text-center" style="width:80px">Score</th>
-                        <th class="text-center" style="width:90px">Confirmé</th>
+                        <th><?= mappingSortLink('company', $sortBy, $sortDir, 'Company fournisseur', $mqp) ?></th>
+                        <th><?= mappingSortLink('client', $sortBy, $sortDir, 'Client interne', $mqp) ?></th>
+                        <th><?= mappingSortLink('method', $sortBy, $sortDir, 'Méthode', $mqp) ?></th>
+                        <th class="text-center" style="width:80px"><?= mappingSortLink('score', $sortBy, $sortDir, 'Score', $mqp) ?></th>
+                        <th class="text-center" style="width:90px"><?= mappingSortLink('confirmed', $sortBy, $sortDir, 'Confirmé', $mqp) ?></th>
                         <th class="text-center" style="width:60px">Actions</th>
                     </tr>
                 </thead>
@@ -164,7 +175,7 @@
             <ul class="pagination pagination-sm">
                 <?php for ($p = 1; $p <= ceil($total / $perPage); $p++): ?>
                 <li class="page-item <?= $p === $page ? 'active' : '' ?>">
-                    <a class="page-link" href="?provider=<?= urlencode($provider) ?>&search=<?= urlencode($search) ?>&confirmed=<?= urlencode($confirmed) ?>&min_score=<?= $minScore ?? '' ?>&page=<?= $p ?>">
+                    <a class="page-link" href="?provider=<?= urlencode($provider) ?>&search=<?= urlencode($search) ?>&confirmed=<?= urlencode($confirmed) ?>&min_score=<?= $minScore ?? '' ?>&sort=<?= urlencode($sortBy) ?>&dir=<?= urlencode($sortDir) ?>&page=<?= $p ?>">
                         <?= $p ?>
                     </a>
                 </li>

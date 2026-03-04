@@ -23,9 +23,20 @@ class MappingController extends Controller
         $search    = trim($_GET['search'] ?? '');
         $confirmed = $_GET['confirmed'] ?? '';  // '', '0', '1'
         $minScore  = ($_GET['min_score'] ?? '') !== '' ? (int)$_GET['min_score'] : null;
+        $sortBy    = $_GET['sort'] ?? 'confirmed';
+        $sortDir   = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
         $page      = max(1, (int)($_GET['page'] ?? 1));
         $perPage   = 50;
         $offset    = ($page - 1) * $perPage;
+
+        $allowedSorts = [
+            'company'   => 'ec.name',
+            'client'    => 'c.name',
+            'method'    => 'cpm.mapping_method',
+            'score'     => 'cpm.match_score',
+            'confirmed' => 'cpm.is_confirmed',
+        ];
+        $orderCol = $allowedSorts[$sortBy] ?? 'cpm.is_confirmed';
 
         $providerRow = $this->db->fetchOne(
             "SELECT id, name FROM providers WHERE code = ? LIMIT 1",
@@ -85,7 +96,7 @@ class MappingController extends Controller
              JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
              JOIN clients c ON c.id = cpm.client_id
              $whereSql
-             ORDER BY cpm.is_confirmed ASC, cpm.match_score DESC, ec.name ASC
+             ORDER BY $orderCol $sortDir, ec.name ASC
              LIMIT $perPage OFFSET $offset",
             $queryParams
         );
@@ -135,6 +146,8 @@ class MappingController extends Controller
             'confirmed'          => $confirmed,
             'minScore'           => $minScore,
             'autoConfirmPreview' => $autoConfirmPreview,
+            'sortBy'             => $sortBy,
+            'sortDir'            => $sortDir,
         ]);
     }
 

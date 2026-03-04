@@ -211,7 +211,7 @@ class EsetSyncService
                     [$licenseKey]
                 );
 
-                if ($this->needsDetailFetch($existing)) {
+                if ($this->needsDetailFetch($existing ?: null)) {
                     // Appel /License/Detail — quantité, usage, état non disponibles via /Search/Licenses
                     usleep(110_000); // respect rate limit 10 req/s
                     try {

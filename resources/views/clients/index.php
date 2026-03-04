@@ -6,6 +6,8 @@
 /** @var string $search */
 /** @var int $tagId */
 /** @var array $allTags */
+/** @var string $sortBy */
+/** @var string $sortDir */
 
 /**
  * Parse tags_raw "id:name:color;;id:name:color" → array of ['id','name','color']
@@ -16,6 +18,14 @@ function parseTags(?string $raw): array {
         [$id, $name, $color] = array_pad(explode(':', $part, 3), 3, '');
         return ['id' => (int)$id, 'name' => $name, 'color' => $color];
     }, explode(';;', $raw));
+}
+
+function clientSortLink(string $col, string $current, string $dir, string $label, array $queryParams): string {
+    $newDir = ($current === $col && $dir === 'ASC') ? 'DESC' : 'ASC';
+    $icon   = $current === $col ? ($dir === 'ASC' ? ' ↑' : ' ↓') : '';
+    $params = array_merge($queryParams, ['sort' => $col, 'dir' => $newDir]);
+    return '<a href="/clients?' . http_build_query($params) . '" class="text-white text-decoration-none">'
+         . htmlspecialchars($label) . $icon . '</a>';
 }
 ?>
 
@@ -65,14 +75,15 @@ function parseTags(?string $raw): array {
 <!-- Tableau -->
 <div class="table-responsive">
     <table class="table table-hover align-middle table-sm">
+        <?php $qp = ['search' => $search, 'tag' => $tagId ?: '']; ?>
         <thead class="table-dark">
             <tr>
-                <th>N° Client</th>
-                <th>Nom</th>
+                <th><?= clientSortLink('client_number', $sortBy, $sortDir, 'N° Client', $qp) ?></th>
+                <th><?= clientSortLink('name', $sortBy, $sortDir, 'Nom', $qp) ?></th>
                 <th>Tags</th>
-                <th>Email</th>
-                <th class="text-center">Fournisseurs</th>
-                <th class="text-center">Statut</th>
+                <th><?= clientSortLink('email', $sortBy, $sortDir, 'Email', $qp) ?></th>
+                <th class="text-center"><?= clientSortLink('providers', $sortBy, $sortDir, 'Fournisseurs', $qp) ?></th>
+                <th class="text-center"><?= clientSortLink('status', $sortBy, $sortDir, 'Statut', $qp) ?></th>
             </tr>
         </thead>
         <tbody>
@@ -168,7 +179,7 @@ function parseTags(?string $raw): array {
 <?php if ($total > $perPage): ?>
 <?php
 $totalPages = (int)ceil($total / $perPage);
-$queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '']);
+$queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'sort' => $sortBy, 'dir' => $sortDir]);
 ?>
 <nav>
     <ul class="pagination pagination-sm justify-content-end">
