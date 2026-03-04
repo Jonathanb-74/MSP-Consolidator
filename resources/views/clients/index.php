@@ -29,6 +29,7 @@ function clientSortLink(string $col, string $current, string $dir, string $label
 }
 ?>
 
+<div class="page-sticky-top">
 <div class="d-flex align-items-center justify-content-between mb-3">
     <div>
         <h1 class="h3 mb-0">
@@ -37,9 +38,6 @@ function clientSortLink(string $col, string $current, string $dir, string $label
         </h1>
     </div>
     <div class="d-flex gap-2">
-        <a href="/tags" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-tags me-1"></i>Gérer les tags
-        </a>
         <a href="/clients/import" class="btn btn-sm btn-primary">
             <i class="bi bi-file-earmark-excel me-1"></i>Importer Excel
         </a>
@@ -47,7 +45,7 @@ function clientSortLink(string $col, string $current, string $dir, string $label
 </div>
 
 <!-- Filtres -->
-<form method="GET" action="/clients" class="row g-2 mb-4" id="filterForm">
+<form method="GET" action="/clients" class="row g-2 mb-2" id="filterForm">
     <div class="col-md-5">
         <div class="input-group input-group-sm">
             <span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -71,11 +69,12 @@ function clientSortLink(string $col, string $current, string $dir, string $label
         <a href="/clients" class="btn btn-sm btn-outline-secondary">Réinitialiser</a>
     </div>
 </form>
+</div>
 
 <!-- Tableau -->
 <div class="table-responsive">
     <table class="table table-hover align-middle table-sm">
-        <?php $qp = ['search' => $search, 'tag' => $tagId ?: '']; ?>
+        <?php $qp = ['search' => $search, 'tag' => $tagId ?: '', 'perPage' => $perPage]; ?>
         <thead class="table-dark">
             <tr>
                 <th><?= clientSortLink('client_number', $sortBy, $sortDir, 'N° Client', $qp) ?></th>
@@ -175,22 +174,35 @@ function clientSortLink(string $col, string $current, string $dir, string $label
     </table>
 </div>
 
-<!-- Pagination -->
-<?php if ($total > $perPage): ?>
 <?php
 $totalPages = (int)ceil($total / $perPage);
-$queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'sort' => $sortBy, 'dir' => $sortDir]);
+$queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'sort' => $sortBy, 'dir' => $sortDir, 'perPage' => $perPage]);
 ?>
-<nav>
-    <ul class="pagination pagination-sm justify-content-end">
-        <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-        <li class="page-item <?= $i === $page ? 'active' : '' ?>">
-            <a class="page-link" href="/clients?<?= $queryBase ?>&page=<?= $i ?>"><?= $i ?></a>
-        </li>
-        <?php endfor; ?>
-    </ul>
-</nav>
-<?php endif; ?>
+<div class="page-sticky-bottom d-flex justify-content-between align-items-center">
+    <small class="text-body-secondary">
+        <?= number_format(min(($page - 1) * $perPage + 1, max($total, 1))) ?>–<?= number_format(min($page * $perPage, $total)) ?> sur <?= number_format($total) ?>
+    </small>
+    <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center gap-2">
+            <label class="small text-body-secondary mb-0">Par page :</label>
+            <select class="form-select form-select-sm" style="width:auto"
+                    onchange="const u=new URL(window.location);u.searchParams.set('perPage',this.value);u.searchParams.set('page','1');window.location=u">
+                <?php foreach ([25, 50, 100, 250] as $pp): ?>
+                <option value="<?= $pp ?>" <?= $perPage === $pp ? 'selected' : '' ?>><?= $pp ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <?php if ($totalPages > 1): ?>
+        <nav><ul class="pagination pagination-sm mb-0">
+            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+            <li class="page-item <?= $i === $page ? 'active' : '' ?>">
+                <a class="page-link" href="/clients?<?= $queryBase ?>&page=<?= $i ?>"><?= $i ?></a>
+            </li>
+            <?php endfor; ?>
+        </ul></nav>
+        <?php endif; ?>
+    </div>
+</div>
 
 <script>
 // ── Toggle tag via clic sur badge ───────────────────────────

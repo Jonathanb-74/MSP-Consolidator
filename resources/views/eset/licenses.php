@@ -33,9 +33,10 @@ function parseTagsEset(?string $raw): array {
     }, explode(';;', $raw));
 }
 
-$qp = compact('search', 'tagId', 'state', 'page');
+$qp = compact('search', 'tagId', 'state', 'page', 'perPage');
 ?>
 
+<div class="page-sticky-top">
 <div class="d-flex align-items-center justify-content-between mb-3">
     <div>
         <h1 class="h3 mb-0">
@@ -54,6 +55,9 @@ $qp = compact('search', 'tagId', 'state', 'page');
         <?php endif; ?>
     </div>
     <div class="d-flex gap-2 align-items-center">
+        <a href="/mapping" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-link-45deg me-1"></i>Mapping
+        </a>
         <a href="/eset/sync-logs" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-clock-history me-1"></i>Logs
         </a>
@@ -67,7 +71,7 @@ $qp = compact('search', 'tagId', 'state', 'page');
 </div>
 
 <!-- Filtres -->
-<form method="GET" action="/eset/licenses" class="row g-2 mb-3" id="filterForm">
+<form method="GET" action="/eset/licenses" class="row g-2 mb-2" id="filterForm">
     <div class="col-md-4">
         <div class="input-group input-group-sm">
             <span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -101,6 +105,7 @@ $qp = compact('search', 'tagId', 'state', 'page');
         <a href="/eset/licenses" class="btn btn-sm btn-outline-secondary">Reset</a>
     </div>
 </form>
+</div>
 
 <!-- Tableau -->
 <div class="table-responsive">
@@ -219,25 +224,38 @@ $qp = compact('search', 'tagId', 'state', 'page');
     </table>
 </div>
 
-<!-- Pagination -->
-<?php if ($total > $perPage): ?>
 <?php
 $totalPages = (int)ceil($total / $perPage);
-$queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'state' => $state, 'sort' => $sortBy, 'dir' => $sortDir]);
+$queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'state' => $state, 'sort' => $sortBy, 'dir' => $sortDir, 'perPage' => $perPage]);
 ?>
-<nav>
-    <ul class="pagination pagination-sm justify-content-end">
-        <?php for ($i = 1; $i <= min($totalPages, 20); $i++): ?>
-        <li class="page-item <?= $i === $page ? 'active' : '' ?>">
-            <a class="page-link" href="/eset/licenses?<?= $queryBase ?>&page=<?= $i ?>"><?= $i ?></a>
-        </li>
-        <?php endfor; ?>
-        <?php if ($totalPages > 20): ?>
-        <li class="page-item disabled"><span class="page-link">…</span></li>
+<div class="page-sticky-bottom d-flex justify-content-between align-items-center">
+    <small class="text-body-secondary">
+        <?= number_format(min(($page - 1) * $perPage + 1, max($total, 1))) ?>–<?= number_format(min($page * $perPage, $total)) ?> sur <?= number_format($total) ?>
+    </small>
+    <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center gap-2">
+            <label class="small text-body-secondary mb-0">Par page :</label>
+            <select class="form-select form-select-sm" style="width:auto"
+                    onchange="const u=new URL(window.location);u.searchParams.set('perPage',this.value);u.searchParams.set('page','1');window.location=u">
+                <?php foreach ([25, 50, 100, 250] as $pp): ?>
+                <option value="<?= $pp ?>" <?= $perPage === $pp ? 'selected' : '' ?>><?= $pp ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <?php if ($totalPages > 1): ?>
+        <nav><ul class="pagination pagination-sm mb-0">
+            <?php for ($i = 1; $i <= min($totalPages, 20); $i++): ?>
+            <li class="page-item <?= $i === $page ? 'active' : '' ?>">
+                <a class="page-link" href="/eset/licenses?<?= $queryBase ?>&page=<?= $i ?>"><?= $i ?></a>
+            </li>
+            <?php endfor; ?>
+            <?php if ($totalPages > 20): ?>
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            <?php endif; ?>
+        </ul></nav>
         <?php endif; ?>
-    </ul>
-</nav>
-<?php endif; ?>
+    </div>
+</div>
 
 <script>
 // "Lancer la première sync" (table vide)

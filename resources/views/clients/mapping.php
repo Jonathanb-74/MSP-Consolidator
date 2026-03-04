@@ -23,7 +23,8 @@ function mappingSortLink(string $col, string $current, string $dir, string $labe
 }
 ?>
 
-<div class="d-flex align-items-center justify-content-between mb-4">
+<div class="page-sticky-top">
+<div class="d-flex align-items-center justify-content-between mb-3">
     <h1 class="h3 mb-0">
         Mapping — <?= htmlspecialchars($providerRow['name']) ?>
         <span class="badge bg-secondary ms-2"><?= number_format($total) ?></span>
@@ -31,10 +32,10 @@ function mappingSortLink(string $col, string $current, string $dir, string $labe
 </div>
 
 <!-- Filtres -->
-<form method="GET" action="/mapping" class="row g-2 mb-3">
+<form method="GET" action="/mapping" class="row g-2 mb-2">
     <input type="hidden" name="provider" value="<?= htmlspecialchars($provider) ?>">
     <div class="col-md-4">
-        <div class="input-group">
+        <div class="input-group input-group-sm">
             <span class="input-group-text"><i class="bi bi-search"></i></span>
             <input type="text" name="search" class="form-control"
                    placeholder="Company ESET, client, numéro…"
@@ -42,14 +43,14 @@ function mappingSortLink(string $col, string $current, string $dir, string $labe
         </div>
     </div>
     <div class="col-md-2">
-        <select name="confirmed" class="form-select">
+        <select name="confirmed" class="form-select form-select-sm">
             <option value="">Tous</option>
             <option value="0" <?= $confirmed === '0' ? 'selected' : '' ?>>Non confirmés</option>
             <option value="1" <?= $confirmed === '1' ? 'selected' : '' ?>>Confirmés</option>
         </select>
     </div>
     <div class="col-md-2">
-        <div class="input-group">
+        <div class="input-group input-group-sm">
             <span class="input-group-text">Score ≥</span>
             <input type="number" name="min_score" class="form-control"
                    min="0" max="100" placeholder="—"
@@ -58,10 +59,11 @@ function mappingSortLink(string $col, string $current, string $dir, string $labe
         </div>
     </div>
     <div class="col-auto">
-        <button type="submit" class="btn btn-outline-secondary">Filtrer</button>
-        <a href="/mapping" class="btn btn-outline-secondary">Réinitialiser</a>
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrer</button>
+        <a href="/mapping" class="btn btn-sm btn-outline-secondary">Réinitialiser</a>
     </div>
 </form>
+</div>
 
 <!-- Barre d'action bulk (masquée par défaut) -->
 <div id="bulkActionBar" class="alert alert-primary py-2 px-3 d-none d-flex align-items-center gap-3 sticky-top mb-3" style="top:60px;z-index:1020">
@@ -170,19 +172,35 @@ function mappingSortLink(string $col, string $current, string $dir, string $labe
             </table>
         </div>
 
-        <?php if ($total > $perPage): ?>
-        <nav>
-            <ul class="pagination pagination-sm">
-                <?php for ($p = 1; $p <= ceil($total / $perPage); $p++): ?>
-                <li class="page-item <?= $p === $page ? 'active' : '' ?>">
-                    <a class="page-link" href="?provider=<?= urlencode($provider) ?>&search=<?= urlencode($search) ?>&confirmed=<?= urlencode($confirmed) ?>&min_score=<?= $minScore ?? '' ?>&sort=<?= urlencode($sortBy) ?>&dir=<?= urlencode($sortDir) ?>&page=<?= $p ?>">
-                        <?= $p ?>
-                    </a>
-                </li>
-                <?php endfor; ?>
-            </ul>
-        </nav>
-        <?php endif; ?>
+        <?php
+        $totalPages  = (int)ceil($total / $perPage);
+        $mappingBase = http_build_query(['provider' => $provider, 'search' => $search, 'confirmed' => $confirmed, 'min_score' => $minScore ?? '', 'sort' => $sortBy, 'dir' => $sortDir, 'perPage' => $perPage]);
+        ?>
+        <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+            <small class="text-body-secondary">
+                <?= number_format(min(($page - 1) * $perPage + 1, max($total, 1))) ?>–<?= number_format(min($page * $perPage, $total)) ?> sur <?= number_format($total) ?>
+            </small>
+            <div class="d-flex align-items-center gap-3">
+                <div class="d-flex align-items-center gap-2">
+                    <label class="small text-body-secondary mb-0">Par page :</label>
+                    <select class="form-select form-select-sm" style="width:auto"
+                            onchange="const u=new URL(window.location);u.searchParams.set('perPage',this.value);u.searchParams.set('page','1');window.location=u">
+                        <?php foreach ([25, 50, 100, 250] as $pp): ?>
+                        <option value="<?= $pp ?>" <?= $perPage === $pp ? 'selected' : '' ?>><?= $pp ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php if ($totalPages > 1): ?>
+                <nav><ul class="pagination pagination-sm mb-0">
+                    <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+                    <li class="page-item <?= $p === $page ? 'active' : '' ?>">
+                        <a class="page-link" href="?<?= $mappingBase ?>&page=<?= $p ?>"><?= $p ?></a>
+                    </li>
+                    <?php endfor; ?>
+                </ul></nav>
+                <?php endif; ?>
+            </div>
+        </div>
     </div>
 
     <!-- Panneau latéral -->

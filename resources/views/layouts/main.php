@@ -15,7 +15,7 @@
 
 <!-- ── Sidebar ────────────────────────────────────────────────── -->
 <div class="d-flex" id="wrapper">
-    <nav id="sidebar" class="d-flex flex-column flex-shrink-0 p-3 border-end" style="width:260px;min-height:100vh;">
+    <nav id="sidebar" class="d-flex flex-column flex-shrink-0 p-3 border-end" style="width:260px;">
 
         <a href="/" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-decoration-none">
             <i class="bi bi-shield-check fs-4 me-2 text-primary"></i>
@@ -31,6 +31,18 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a href="/licenses" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/licenses') ? 'active' : '' ?>">
+                    <i class="bi bi-grid-3x3 me-2"></i>Récap Licences
+                </a>
+            </li>
+        </ul>
+
+        <hr>
+
+        <!-- Clients -->
+        <p class="text-uppercase text-body-secondary small fw-semibold px-1 mb-1">Clients</p>
+        <ul class="nav nav-pills flex-column mb-auto">
+            <li class="nav-item">
                 <a href="/clients" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/clients') ? 'active' : '' ?>">
                     <i class="bi bi-people me-2"></i>Clients
                 </a>
@@ -38,11 +50,6 @@
             <li class="nav-item">
                 <a href="/tags" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/tags') ? 'active' : '' ?>">
                     <i class="bi bi-tags me-2"></i>Tags
-                </a>
-            </li>
-            <li class="nav-item">
-                <a href="/mapping" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/mapping') ? 'active' : '' ?>">
-                    <i class="bi bi-link-45deg me-2"></i>Mapping fournisseurs
                 </a>
             </li>
         </ul>
@@ -98,7 +105,7 @@
     <!-- ── /Sidebar ────────────────────────────────────────────── -->
 
     <!-- ── Contenu principal ──────────────────────────────────── -->
-    <div class="flex-grow-1 d-flex flex-column">
+    <div class="flex-grow-1 d-flex flex-column" id="main-panel">
 
         <!-- Topbar -->
         <header class="px-4 py-2 border-bottom d-flex align-items-center justify-content-between">
@@ -129,12 +136,6 @@
                     <span id="syncStatusBadge" class="badge bg-secondary">
                         <span class="spinner-border spinner-border-sm" style="width:.6em;height:.6em"></span>
                     </span>
-                    <button id="btnSyncNow"
-                            class="btn btn-xs btn-outline-secondary py-0 px-1"
-                            title="Lancer la synchronisation ESET"
-                            style="font-size:.75rem;line-height:1.4">
-                        <i class="bi bi-arrow-clockwise"></i>
-                    </button>
                     <a href="/eset/sync-logs" class="text-body-secondary" title="Voir les logs de sync" style="font-size:.8rem">
                         <i class="bi bi-clock-history"></i>
                     </a>

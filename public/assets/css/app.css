@@ -1,9 +1,25 @@
 /* ── MSP Consolidator — Custom Styles ───────────────────────── */
 
-/* Sidebar */
+/* Layout racine — sidebar fixe + contenu scrollable */
+#wrapper {
+    height: 100vh;
+    overflow: hidden;
+}
+
 #sidebar {
+    height: 100vh;
+    overflow-y: auto;
     transition: width 0.2s ease;
     background-color: var(--bs-body-bg);
+}
+
+#main-panel {
+    height: 100vh;
+    overflow: hidden;
+}
+
+#main-panel main {
+    overflow-y: auto;
 }
 
 #sidebar .nav-link {
@@ -67,7 +83,28 @@
 
 /* Main content */
 main {
-    min-height: calc(100vh - 60px);
+    min-height: 0;
+}
+
+/* Sticky header/footer dans les pages tableau */
+.page-sticky-top {
+    position: sticky;
+    top: -1.5rem; /* compense le padding-top du main (p-4) */
+    z-index: 10;
+    background: var(--bs-body-bg);
+    padding-top: 1.5rem;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0;
+}
+
+.page-sticky-bottom {
+    position: sticky;
+    bottom: -1.5rem; /* compense le padding-bottom du main (p-4) */
+    background: var(--bs-body-bg);
+    padding-top: 0.5rem;
+    padding-bottom: 1.5rem;
+    border-top: 1px solid var(--bs-border-color);
+    margin-top: 0.5rem;
 }
 
 /* Breadcrumb */

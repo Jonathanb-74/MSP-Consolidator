@@ -26,7 +26,8 @@ class MappingController extends Controller
         $sortBy    = $_GET['sort'] ?? 'confirmed';
         $sortDir   = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
         $page      = max(1, (int)($_GET['page'] ?? 1));
-        $perPage   = 50;
+        $_pp     = (int)($_GET['perPage'] ?? 50);
+        $perPage = in_array($_pp, [25, 50, 100, 250]) ? $_pp : 50;
         $offset    = ($page - 1) * $perPage;
 
         $allowedSorts = [

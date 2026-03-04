@@ -27,6 +27,7 @@ use App\Core\Router;
 use App\Controllers\DashboardController;
 use App\Controllers\ClientController;
 use App\Controllers\TagController;
+use App\Controllers\LicenseController;
 use App\Controllers\MappingController;
 use App\Modules\Eset\EsetController;
 
@@ -48,6 +49,9 @@ $router->post('/tags/create',   [TagController::class, 'create']);
 $router->post('/tags/update',   [TagController::class, 'update']);
 $router->post('/tags/delete',   [TagController::class, 'delete']);
 $router->post('/tags/reorder',  [TagController::class, 'reorder']);
+
+// Récap licences
+$router->get('/licenses', [LicenseController::class, 'index']);
 
 // Mapping fournisseur ↔ client
 $router->get('/mapping',                [MappingController::class, 'index']);
