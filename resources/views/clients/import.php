@@ -1,6 +1,4 @@
-<?php
-/** @var array $structures */
-?>
+<?php ?>
 
 <div class="d-flex align-items-center justify-content-between mb-4">
     <h1 class="h3 mb-0">Importer des clients</h1>
@@ -50,6 +48,8 @@
                 Les lignes avec des codes alphanumériques (ex : <code>DEMO01</code>) sont silencieusement ignorées.
                 <br><i class="bi bi-arrow-repeat me-1"></i>
                 <strong>Upsert :</strong> si le code client existe déjà, ses données sont mises à jour ; sinon il est créé.
+                <br><i class="bi bi-tags me-1"></i>
+                <strong>Tags :</strong> après l'import, assignez des tags aux clients depuis la <a href="/clients">liste des clients</a>.
             </p>
         </div>
 
@@ -57,23 +57,6 @@
         <div class="card border-0 bg-body-secondary">
             <div class="card-body">
                 <form method="POST" action="/clients/import" enctype="multipart/form-data">
-
-                    <div class="mb-4">
-                        <label for="structure" class="form-label fw-semibold">
-                            Structure <span class="text-danger">*</span>
-                        </label>
-                        <select name="structure" id="structure" class="form-select" required>
-                            <option value="">Sélectionner une structure…</option>
-                            <?php foreach ($structures as $s): ?>
-                            <option value="<?= htmlspecialchars($s['code']) ?>">
-                                <?= htmlspecialchars($s['code']) ?> — <?= htmlspecialchars($s['name']) ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <div class="form-text">
-                            Tous les clients du fichier seront associés à cette structure.
-                        </div>
-                    </div>
 
                     <div class="mb-4">
                         <label for="excel_file" class="form-label fw-semibold">

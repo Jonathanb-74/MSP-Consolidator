@@ -26,6 +26,7 @@ session_start();
 use App\Core\Router;
 use App\Controllers\DashboardController;
 use App\Controllers\ClientController;
+use App\Controllers\TagController;
 use App\Controllers\MappingController;
 use App\Modules\Eset\EsetController;
 
@@ -39,6 +40,14 @@ $router->get('/dashboard',       [DashboardController::class, 'index']);
 $router->get('/clients',         [ClientController::class, 'index']);
 $router->get('/clients/import',  [ClientController::class, 'importForm']);
 $router->post('/clients/import', [ClientController::class, 'importProcess']);
+$router->post('/clients/tag',    [ClientController::class, 'toggleTag']);
+
+// Tags
+$router->get('/tags',           [TagController::class, 'index']);
+$router->post('/tags/create',   [TagController::class, 'create']);
+$router->post('/tags/update',   [TagController::class, 'update']);
+$router->post('/tags/delete',   [TagController::class, 'delete']);
+$router->post('/tags/reorder',  [TagController::class, 'reorder']);
 
 // Mapping fournisseur ↔ client
 $router->get('/mapping',                [MappingController::class, 'index']);
@@ -48,10 +57,11 @@ $router->post('/mapping/confirm-bulk',  [MappingController::class, 'confirmBulk'
 $router->post('/mapping/auto-confirm',  [MappingController::class, 'autoConfirm']);
 
 // ESET
-$router->get('/eset/licenses',    [EsetController::class, 'licenses']);
-$router->get('/eset/sync-logs',   [EsetController::class, 'syncLogs']);
-$router->post('/eset/sync',        [EsetController::class, 'sync']);
-$router->post('/eset/sync-cancel', [EsetController::class, 'syncCancel']);
-$router->get('/eset/sync-status',  [EsetController::class, 'syncStatus']);
+$router->get('/eset/licenses',      [EsetController::class, 'licenses']);
+$router->get('/eset/sync-logs',     [EsetController::class, 'syncLogs']);
+$router->post('/eset/sync',         [EsetController::class, 'sync']);
+$router->post('/eset/sync-cancel',  [EsetController::class, 'syncCancel']);
+$router->get('/eset/sync-status',   [EsetController::class, 'syncStatus']);
+$router->get('/eset/debug-license', [EsetController::class, 'debugLicense']);
 
 $router->dispatch();

@@ -36,6 +36,11 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a href="/tags" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/tags') ? 'active' : '' ?>">
+                    <i class="bi bi-tags me-2"></i>Tags
+                </a>
+            </li>
+            <li class="nav-item">
                 <a href="/mapping" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/mapping') ? 'active' : '' ?>">
                     <i class="bi bi-link-45deg me-2"></i>Mapping fournisseurs
                 </a>

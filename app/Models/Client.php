@@ -16,9 +16,7 @@ class Client
     public function findByClientNumber(string $clientNumber): array|false
     {
         return $this->db->fetchOne(
-            "SELECT c.*, s.code AS structure_code
-             FROM clients c JOIN structures s ON s.id = c.structure_id
-             WHERE c.client_number = ? LIMIT 1",
+            "SELECT * FROM clients WHERE client_number = ? LIMIT 1",
             [$clientNumber]
         );
     }
@@ -26,21 +24,19 @@ class Client
     public function findById(int $id): array|false
     {
         return $this->db->fetchOne(
-            "SELECT c.*, s.code AS structure_code
-             FROM clients c JOIN structures s ON s.id = c.structure_id
-             WHERE c.id = ? LIMIT 1",
+            "SELECT * FROM clients WHERE id = ? LIMIT 1",
             [$id]
         );
     }
 
-    public function countByStructure(): array
+    public function countByTag(): array
     {
         return $this->db->fetchAll(
-            "SELECT s.code, COUNT(c.id) AS total
-             FROM structures s
-             LEFT JOIN clients c ON c.structure_id = s.id AND c.is_active = 1
-             GROUP BY s.id, s.code
-             ORDER BY s.code"
+            "SELECT t.name, t.color, COUNT(ct.client_id) AS total
+             FROM tags t
+             LEFT JOIN client_tags ct ON ct.tag_id = t.id
+             GROUP BY t.id
+             ORDER BY t.display_order ASC, t.name ASC"
         );
     }
 }

@@ -114,8 +114,7 @@
                         </td>
                         <td>
                             <?= htmlspecialchars($m['client_name']) ?>
-                            <br><small class="text-body-secondary"><code><?= htmlspecialchars($m['client_number']) ?></code>
-                            <span class="badge bg-secondary"><?= htmlspecialchars($m['structure_code']) ?></span></small>
+                            <br><small class="text-body-secondary"><code><?= htmlspecialchars($m['client_number']) ?></code></small>
                         </td>
                         <td>
                             <?php
@@ -247,7 +246,6 @@
                             <option value="">Sélectionner un client…</option>
                             <?php foreach ($clients as $c): ?>
                             <option value="<?= $c['id'] ?>">
-                                [<?= htmlspecialchars($c['structure_code']) ?>]
                                 <?= htmlspecialchars($c['name']) ?>
                                 (<?= htmlspecialchars($c['client_number']) ?>)
                             </option>

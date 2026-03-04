@@ -80,12 +80,10 @@ class MappingController extends Controller
                 cpm.notes,
                 c.id AS client_id,
                 c.name AS client_name,
-                c.client_number,
-                s.code AS structure_code
+                c.client_number
              FROM client_provider_mappings cpm
              JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
              JOIN clients c ON c.id = cpm.client_id
-             JOIN structures s ON s.id = c.structure_id
              $whereSql
              ORDER BY cpm.is_confirmed ASC, cpm.match_score DESC, ec.name ASC
              LIMIT $perPage OFFSET $offset",
@@ -106,11 +104,10 @@ class MappingController extends Controller
         );
 
         $clients = $this->db->fetchAll(
-            "SELECT c.id, c.name, c.client_number, s.code AS structure_code
+            "SELECT c.id, c.name, c.client_number
              FROM clients c
-             JOIN structures s ON s.id = c.structure_id
              WHERE c.is_active = 1
-             ORDER BY s.code, c.name"
+             ORDER BY c.name"
         );
 
         // Comptage des mappings non confirmés avec score >= seuil (pour la preview auto-confirm)

@@ -1,6 +1,6 @@
 <?php
 /** @var int $totalClients */
-/** @var array $structureStats */
+/** @var array $tagStats */
 /** @var array|false $esetStats */
 /** @var array $providers */
 /** @var int $pendingMappings */
@@ -71,29 +71,37 @@
 </div>
 
 <div class="row g-4">
-    <!-- Répartition par structure -->
+    <!-- Répartition par tag -->
     <div class="col-lg-4">
         <div class="card border-0 bg-body-secondary h-100">
-            <div class="card-header bg-transparent border-0 pb-0">
-                <h5 class="card-title mb-0"><i class="bi bi-diagram-3 me-2"></i>Structures</h5>
+            <div class="card-header bg-transparent border-0 pb-0 d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0"><i class="bi bi-tags me-2"></i>Tags</h5>
+                <a href="/tags" class="btn btn-sm btn-outline-secondary">Gérer</a>
             </div>
             <div class="card-body">
-                <?php
-                $structureColors = ['FCI' => 'primary', 'LTI' => 'success', 'LNI' => 'info', 'MACSHOP' => 'warning'];
-                foreach ($structureStats as $stat):
-                    $color = $structureColors[$stat['code']] ?? 'secondary';
-                    $pct   = $totalClients > 0 ? round($stat['total'] / $totalClients * 100) : 0;
+                <?php if (empty($tagStats)): ?>
+                <p class="text-body-secondary small mb-0">
+                    Aucun tag créé. <a href="/tags">Créer des tags</a>
+                </p>
+                <?php else: ?>
+                <?php foreach ($tagStats as $stat):
+                    $pct = $totalClients > 0 ? round($stat['total'] / $totalClients * 100) : 0;
                 ?>
                 <div class="mb-3">
                     <div class="d-flex justify-content-between mb-1">
-                        <span><span class="badge bg-<?= $color ?> me-1"><?= htmlspecialchars($stat['code']) ?></span></span>
-                        <span class="small text-body-secondary"><?= $stat['total'] ?> clients (<?= $pct ?>%)</span>
+                        <span>
+                            <span class="badge rounded-pill me-1" style="background-color:<?= htmlspecialchars($stat['color']) ?>">
+                                <?= htmlspecialchars($stat['name']) ?>
+                            </span>
+                        </span>
+                        <span class="small text-body-secondary"><?= $stat['total'] ?> clients</span>
                     </div>
                     <div class="progress" style="height:6px">
-                        <div class="progress-bar bg-<?= $color ?>" style="width:<?= $pct ?>%"></div>
+                        <div class="progress-bar" style="width:<?= $pct ?>%;background-color:<?= htmlspecialchars($stat['color']) ?>"></div>
                     </div>
                 </div>
                 <?php endforeach; ?>
+                <?php endif; ?>
             </div>
         </div>
     </div>

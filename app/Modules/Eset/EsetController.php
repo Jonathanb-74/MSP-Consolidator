@@ -19,29 +19,27 @@ class EsetController extends Controller
      */
     public function licenses(array $params = []): void
     {
-        $search     = trim($_GET['search'] ?? '');
-        $structure  = $_GET['structure'] ?? '';
-        $state      = $_GET['state'] ?? '';
-        $sortBy     = $_GET['sort'] ?? 'c.name';
-        $sortDir    = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
-        $page       = max(1, (int)($_GET['page'] ?? 1));
-        $perPage    = 50;
-        $offset     = ($page - 1) * $perPage;
+        $search  = trim($_GET['search'] ?? '');
+        $tagId   = (int)($_GET['tag'] ?? 0);
+        $state   = $_GET['state'] ?? '';
+        $sortBy  = $_GET['sort'] ?? 'client';
+        $sortDir = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
+        $page    = max(1, (int)($_GET['page'] ?? 1));
+        $perPage = 50;
+        $offset  = ($page - 1) * $perPage;
 
-        // Colonnes autorisées pour le tri
         $allowedSorts = [
-            'client'    => 'c.name',
-            'company'   => 'ec.name',
-            'product'   => 'el.product_name',
-            'quantity'  => 'el.quantity',
-            'usage'     => 'el.usage_count',
-            'state'     => 'el.state',
-            'expiry'    => 'el.expiration_date',
-            'structure' => 's.code',
+            'client'   => 'c.name',
+            'company'  => 'ec.name',
+            'product'  => 'el.product_name',
+            'quantity' => 'el.quantity',
+            'usage'    => 'el.usage_count',
+            'state'    => 'el.state',
+            'expiry'   => 'el.expiration_date',
         ];
         $orderCol = $allowedSorts[$sortBy] ?? 'c.name';
 
-        [$whereSql, $whereParams] = $this->buildWhere($search, $structure, $state);
+        [$whereSql, $whereParams] = $this->buildWhere($search, $tagId, $state);
 
         $countSql = "
             SELECT COUNT(*)
@@ -51,7 +49,7 @@ class EsetController extends Controller
                 ON cpm.provider_client_id = ec.eset_company_id
                 AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'eset' LIMIT 1)
             LEFT JOIN clients c ON c.id = cpm.client_id
-            LEFT JOIN structures s ON s.id = c.structure_id
+            LEFT JOIN client_tags ctf ON ctf.client_id = c.id
             $whereSql
         ";
 
@@ -76,7 +74,10 @@ class EsetController extends Controller
                 c.id AS client_id,
                 c.name AS client_name,
                 c.client_number,
-                s.code AS structure_code,
+                (SELECT GROUP_CONCAT(CONCAT(t.id, ':', t.name, ':', t.color)
+                                     ORDER BY t.display_order ASC SEPARATOR ';;')
+                 FROM client_tags ct2 JOIN tags t ON t.id = ct2.tag_id
+                 WHERE ct2.client_id = c.id) AS client_tags_raw,
                 cpm.is_confirmed AS mapping_confirmed,
                 cpm.mapping_method
             FROM eset_licenses el
@@ -85,15 +86,15 @@ class EsetController extends Controller
                 ON cpm.provider_client_id = ec.eset_company_id
                 AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'eset' LIMIT 1)
             LEFT JOIN clients c ON c.id = cpm.client_id
-            LEFT JOIN structures s ON s.id = c.structure_id
+            LEFT JOIN client_tags ctf ON ctf.client_id = c.id
             $whereSql
+            GROUP BY el.id
             ORDER BY $orderCol $sortDir
             LIMIT $perPage OFFSET $offset
         ";
 
         $licenses = $this->db->fetchAll($sql, $whereParams);
 
-        // Dernière synchronisation
         $lastSync = $this->db->fetchOne(
             "SELECT finished_at, status FROM sync_logs
              WHERE provider_id = (SELECT id FROM providers WHERE code = 'eset')
@@ -101,22 +102,24 @@ class EsetController extends Controller
              ORDER BY finished_at DESC LIMIT 1"
         );
 
-        $structures = $this->db->fetchAll("SELECT code FROM structures ORDER BY code");
+        $allTags = $this->db->fetchAll(
+            "SELECT * FROM tags ORDER BY display_order ASC, name ASC"
+        );
 
         $this->render('eset/licenses', [
-            'pageTitle'    => 'Licences ESET',
-            'breadcrumbs'  => ['Dashboard' => '/', 'ESET' => null, 'Licences' => null],
-            'licenses'     => $licenses,
-            'total'        => $total,
-            'page'         => $page,
-            'perPage'      => $perPage,
-            'search'       => $search,
-            'structure'    => $structure,
-            'state'        => $state,
-            'sortBy'       => $sortBy,
-            'sortDir'      => $sortDir,
-            'lastSync'     => $lastSync,
-            'structures'   => array_column($structures, 'code'),
+            'pageTitle'   => 'Licences ESET',
+            'breadcrumbs' => ['Dashboard' => '/', 'ESET' => null, 'Licences' => null],
+            'licenses'    => $licenses,
+            'total'       => $total,
+            'page'        => $page,
+            'perPage'     => $perPage,
+            'search'      => $search,
+            'tagId'       => $tagId,
+            'state'       => $state,
+            'sortBy'      => $sortBy,
+            'sortDir'     => $sortDir,
+            'lastSync'    => $lastSync,
+            'allTags'     => $allTags,
         ]);
     }
 
@@ -254,9 +257,32 @@ class EsetController extends Controller
         ]);
     }
 
+    /**
+     * GET /eset/debug-license — Inspecte raw_data des premières licences (diagnostic field names)
+     */
+    public function debugLicense(array $params = []): void
+    {
+        $licenses = $this->db->fetchAll(
+            "SELECT id, public_license_key, quantity, usage_count, raw_data FROM eset_licenses LIMIT 3"
+        );
+
+        $result = array_map(function ($lic) {
+            return [
+                'id'                  => $lic['id'],
+                'public_license_key'  => $lic['public_license_key'],
+                'db_quantity'         => $lic['quantity'],
+                'db_usage_count'      => $lic['usage_count'],
+                'raw_data_keys'       => $lic['raw_data'] ? array_keys(json_decode($lic['raw_data'], true) ?? []) : null,
+                'raw_data'            => $lic['raw_data'] ? json_decode($lic['raw_data'], true) : null,
+            ];
+        }, $licenses);
+
+        $this->json($result);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────
 
-    private function buildWhere(string $search, string $structure, string $state): array
+    private function buildWhere(string $search, int $tagId, string $state): array
     {
         $conditions = [];
         $params     = [];
@@ -267,9 +293,9 @@ class EsetController extends Controller
             $params = array_merge($params, [$like, $like, $like, $like]);
         }
 
-        if ($structure !== '') {
-            $conditions[] = "s.code = ?";
-            $params[]     = $structure;
+        if ($tagId > 0) {
+            $conditions[] = "ctf.tag_id = ?";
+            $params[]     = $tagId;
         }
 
         if ($state !== '') {

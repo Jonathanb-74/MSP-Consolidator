@@ -18,8 +18,7 @@ CREATE TABLE IF NOT EXISTS `structures` (
 
 CREATE TABLE IF NOT EXISTS `clients` (
     `id`            INT UNSIGNED    AUTO_INCREMENT PRIMARY KEY,
-    `client_number` VARCHAR(50)     NOT NULL COMMENT 'Clé métier (unique par structure)',
-    `structure_id`  TINYINT UNSIGNED NOT NULL,
+    `client_number` VARCHAR(50)     NOT NULL UNIQUE COMMENT 'Clé métier',
     `name`          VARCHAR(255)    NOT NULL,
     `email`         VARCHAR(255)    DEFAULT NULL,
     `phone`         VARCHAR(50)     DEFAULT NULL,
@@ -27,10 +26,23 @@ CREATE TABLE IF NOT EXISTS `clients` (
     `is_active`     TINYINT(1)      NOT NULL DEFAULT 1,
     `created_at`    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at`    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (`structure_id`) REFERENCES `structures`(`id`),
-    UNIQUE KEY `uq_client_structure` (`client_number`, `structure_id`),
-    INDEX `idx_structure` (`structure_id`),
-    INDEX `idx_active`    (`is_active`)
+    INDEX `idx_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `tags` (
+    `id`            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `name`          VARCHAR(50)  NOT NULL UNIQUE,
+    `color`         VARCHAR(7)   NOT NULL DEFAULT '#6c757d' COMMENT 'Couleur hexadécimale (#rrggbb)',
+    `display_order` INT UNSIGNED NOT NULL DEFAULT 0,
+    `created_at`    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `client_tags` (
+    `client_id` INT UNSIGNED NOT NULL,
+    `tag_id`    INT UNSIGNED NOT NULL,
+    PRIMARY KEY (`client_id`, `tag_id`),
+    FOREIGN KEY (`client_id`) REFERENCES `clients`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`tag_id`)    REFERENCES `tags`(`id`)    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `providers` (
@@ -135,3 +147,12 @@ INSERT IGNORE INTO `providers` (`code`, `name`, `is_enabled`) VALUES
     ('wasabi',     'Wasabi',                   0),
     ('veeam',      'Veeam',                    0),
     ('infomaniak', 'Infomaniak',               0);
+
+-- ============================================================
+-- MIGRATION (à exécuter sur une base existante)
+-- ============================================================
+-- ALTER TABLE `clients` DROP FOREIGN KEY `clients_ibfk_1`;
+-- ALTER TABLE `clients` DROP INDEX `uq_client_structure`;
+-- ALTER TABLE `clients` DROP INDEX `idx_structure`;
+-- ALTER TABLE `clients` DROP COLUMN `structure_id`;
+-- ALTER TABLE `clients` ADD UNIQUE KEY `client_number` (`client_number`);

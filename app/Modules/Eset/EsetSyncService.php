@@ -22,6 +22,9 @@ class EsetSyncService
     // Seuil similarité nom pour auto-mapping (0-100)
     private const NAME_SIMILARITY_THRESHOLD = 80;
 
+    // Heures avant re-fetch du détail pour une licence stable (sync incrémentale)
+    private const DETAIL_REFRESH_HOURS = 4;
+
     public function __construct(Database $db, EsetApiClient $api)
     {
         $this->db  = $db;
@@ -196,24 +199,48 @@ class EsetSyncService
                     continue;
                 }
 
-                // Utilisation directe des données de /Search/Licenses — pas d'appel /License/Detail
-                $productCode    = $lic['Code']           ?? $lic['code']           ?? null;
-                $productName    = $lic['Name']           ?? $lic['name']           ?? null;
-                $quantity       = $lic['Quantity']       ?? $lic['quantity']       ?? 0;
-                $usageCount     = $lic['UsageCount']     ?? $lic['usageCount']
-                                ?? $lic['Usage']         ?? $lic['usage']         ?? 0;
-                $state          = $lic['State']          ?? $lic['state']          ?? null;
-                $isTrial        = !empty($lic['IsTrial']) || !empty($lic['isTrial']) ? 1 : 0;
-                $expirationRaw  = $lic['ExpirationDate'] ?? $lic['expirationDate']
-                                ?? $lic['TrialExpiration'] ?? $lic['trialExpiration'] ?? null;
-                $expirationDate = $expirationRaw ? date('Y-m-d', strtotime($expirationRaw)) : null;
+                // Données de base depuis /Search/Licenses
+                $productCode = $lic['Code'] ?? $lic['code'] ?? null;
+                $productName = $lic['Name'] ?? $lic['name'] ?? null;
 
-                $exists = $this->db->fetchOne(
-                    "SELECT id FROM eset_licenses WHERE public_license_key = ? LIMIT 1",
+                // Récupère la licence existante avec les champs nécessaires à la décision
+                $existing = $this->db->fetchOne(
+                    "SELECT id, state, expiration_date, last_sync_at,
+                            quantity, usage_count, is_trial
+                     FROM eset_licenses WHERE public_license_key = ? LIMIT 1",
                     [$licenseKey]
                 );
 
-                if ($exists) {
+                if ($this->needsDetailFetch($existing)) {
+                    // Appel /License/Detail — quantité, usage, état non disponibles via /Search/Licenses
+                    usleep(110_000); // respect rate limit 10 req/s
+                    try {
+                        $detail = $this->api->getLicenseDetail($licenseKey);
+                    } catch (\Throwable $e) {
+                        $this->log("Erreur getLicenseDetail({$licenseKey}) : " . $e->getMessage());
+                        $detail = [];
+                    }
+
+                    $quantity       = (int)($detail['Quantity']       ?? $detail['quantity']       ?? 0);
+                    $usageCount     = (int)($detail['UsageCount']     ?? $detail['usageCount']
+                                    ?? $detail['Usage']         ?? $detail['usage']         ?? 0);
+                    $state          = $detail['State']          ?? $detail['state']          ?? null;
+                    $isTrial        = !empty($detail['IsTrial']) || !empty($detail['isTrial']) ? 1 : 0;
+                    $expirationRaw  = $detail['ExpirationDate'] ?? $detail['expirationDate']
+                                    ?? $detail['TrialExpiration'] ?? $detail['trialExpiration'] ?? null;
+                    $expirationDate = $expirationRaw ? date('Y-m-d', strtotime($expirationRaw)) : null;
+                    $rawMerged      = array_merge($lic, $detail);
+                } else {
+                    // Sync incrémentale : réutiliser les données existantes, pas d'appel API
+                    $quantity       = (int)($existing['quantity']    ?? 0);
+                    $usageCount     = (int)($existing['usage_count'] ?? 0);
+                    $state          = $existing['state'];
+                    $isTrial        = (int)($existing['is_trial']    ?? 0);
+                    $expirationDate = $existing['expiration_date'];
+                    $rawMerged      = $lic;
+                }
+
+                if ($existing) {
                     $this->db->execute(
                         "UPDATE eset_licenses SET
                             eset_company_id = ?, product_code = ?, product_name = ?,
@@ -225,7 +252,7 @@ class EsetSyncService
                             $companyId, $productCode, $productName,
                             $quantity, $usageCount, $state,
                             $expirationDate, $isTrial,
-                            json_encode($lic), $now, $now,
+                            json_encode($rawMerged), $now, $now,
                             $licenseKey,
                         ]
                     );
@@ -240,7 +267,7 @@ class EsetSyncService
                         [
                             $companyId, $licenseKey, $productCode, $productName,
                             $quantity, $usageCount, $state, $expirationDate, $isTrial,
-                            json_encode($lic), $now,
+                            json_encode($rawMerged), $now,
                         ]
                     );
                     $created++;
@@ -251,6 +278,35 @@ class EsetSyncService
         $this->log("Licences : {$totalFetched} récupérées, {$created} créées, {$updated} mises à jour.");
 
         return ['fetched' => $totalFetched, 'created' => $created, 'updated' => $updated];
+    }
+
+    // ── Sync incrémentale ──────────────────────────────────────────
+
+    /**
+     * Détermine si un appel /License/Detail est nécessaire pour cette licence.
+     * Retourne true pour les nouvelles licences, les licences inconnues/expirantes,
+     * ou toute licence dont le détail date de plus de DETAIL_REFRESH_HOURS.
+     */
+    private function needsDetailFetch(?array $existing): bool
+    {
+        if (!$existing)                 return true;  // Nouvelle licence
+        if (!$existing['state'])        return true;  // État inconnu
+        if (!$existing['last_sync_at']) return true;  // Jamais détaillé
+
+        $hoursSince = (time() - strtotime($existing['last_sync_at'])) / 3600;
+
+        if ($existing['state'] === 'EXPIRED') {
+            return $hoursSince > 24;  // Re-fetch 1× par jour pour les expirées
+        }
+
+        if ($existing['expiration_date']) {
+            $daysUntilExpiry = (strtotime($existing['expiration_date']) - time()) / 86400;
+            if ($daysUntilExpiry < 45) {
+                return true;  // Toujours re-fetch si expiration dans moins de 45j
+            }
+        }
+
+        return $hoursSince > self::DETAIL_REFRESH_HOURS;
     }
 
     // ── Auto-mapping ───────────────────────────────────────────────

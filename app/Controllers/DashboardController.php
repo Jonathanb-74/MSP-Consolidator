@@ -19,12 +19,12 @@ class DashboardController extends Controller
         // Stats globales
         $totalClients = $this->db->count("SELECT COUNT(*) FROM clients WHERE is_active = 1");
 
-        $structureStats = $this->db->fetchAll(
-            "SELECT s.code, COUNT(c.id) AS total
-             FROM structures s
-             LEFT JOIN clients c ON c.structure_id = s.id AND c.is_active = 1
-             GROUP BY s.id, s.code
-             ORDER BY s.code"
+        $tagStats = $this->db->fetchAll(
+            "SELECT t.name, t.color, COUNT(ct.client_id) AS total
+             FROM tags t
+             LEFT JOIN client_tags ct ON ct.tag_id = t.id
+             GROUP BY t.id
+             ORDER BY t.display_order ASC, t.name ASC"
         );
 
         // Stats ESET
@@ -63,7 +63,7 @@ class DashboardController extends Controller
             'pageTitle'       => 'Dashboard',
             'breadcrumbs'     => ['Dashboard' => null],
             'totalClients'    => $totalClients,
-            'structureStats'  => $structureStats,
+            'tagStats'        => $tagStats,
             'esetStats'       => $esetStats,
             'providers'       => $providers,
             'pendingMappings' => $pendingMappings,

@@ -4,12 +4,12 @@
 /** @var int $page */
 /** @var int $perPage */
 /** @var string $search */
-/** @var string $structure */
+/** @var int $tagId */
 /** @var string $state */
 /** @var string $sortBy */
 /** @var string $sortDir */
 /** @var array|false $lastSync */
-/** @var array $structures */
+/** @var array $allTags */
 
 $today    = new DateTime();
 $in30Days = new DateTime('+30 days');
@@ -22,7 +22,18 @@ function sortLink(string $col, string $current, string $dir, string $label, arra
          . $label . ($icon ? " $icon" : '') . '</a>';
 }
 
-$qp = compact('search', 'structure', 'state', 'page');
+/**
+ * Parse "id:name:color;;id:name:color" → array
+ */
+function parseTagsEset(?string $raw): array {
+    if (!$raw) return [];
+    return array_map(function($part) {
+        [$id, $name, $color] = array_pad(explode(':', $part, 3), 3, '');
+        return ['id' => (int)$id, 'name' => $name, 'color' => $color];
+    }, explode(';;', $raw));
+}
+
+$qp = compact('search', 'tagId', 'state', 'page');
 ?>
 
 <div class="d-flex align-items-center justify-content-between mb-3">
@@ -66,11 +77,11 @@ $qp = compact('search', 'structure', 'state', 'page');
         </div>
     </div>
     <div class="col-md-2">
-        <select name="structure" class="form-select form-select-sm">
-            <option value="">Toutes les structures</option>
-            <?php foreach ($structures as $s): ?>
-                <option value="<?= htmlspecialchars($s) ?>" <?= $structure === $s ? 'selected' : '' ?>>
-                    <?= htmlspecialchars($s) ?>
+        <select name="tag" class="form-select form-select-sm">
+            <option value="">Tous les tags</option>
+            <?php foreach ($allTags as $t): ?>
+                <option value="<?= (int)$t['id'] ?>" <?= $tagId === (int)$t['id'] ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($t['name']) ?>
                 </option>
             <?php endforeach; ?>
         </select>
@@ -96,8 +107,8 @@ $qp = compact('search', 'structure', 'state', 'page');
     <table class="table table-hover table-sm align-middle" id="licensesTable">
         <thead class="table-dark small">
             <tr>
-                <th><?= sortLink('structure', $sortBy, $sortDir, 'Structure', $qp) ?></th>
                 <th><?= sortLink('client', $sortBy, $sortDir, 'Client', $qp) ?></th>
+                <th>Tags</th>
                 <th><?= sortLink('company', $sortBy, $sortDir, 'Company ESET', $qp) ?></th>
                 <th><?= sortLink('product', $sortBy, $sortDir, 'Produit', $qp) ?></th>
                 <th class="text-center"><?= sortLink('quantity', $sortBy, $sortDir, 'Total', $qp) ?></th>
@@ -123,10 +134,7 @@ $qp = compact('search', 'structure', 'state', 'page');
                 </td>
             </tr>
             <?php else: ?>
-            <?php
-            $structureColors = ['FCI' => 'primary', 'LTI' => 'success', 'LNI' => 'info', 'MACSHOP' => 'warning'];
-            foreach ($licenses as $lic):
-                // Calcul badge état
+            <?php foreach ($licenses as $lic):
                 $expDate  = $lic['expiration_date'] ? new DateTime($lic['expiration_date']) : null;
                 $isTrial  = (bool)$lic['is_trial'];
                 $expiringSoon = $expDate && $expDate >= $today && $expDate <= $in30Days;
@@ -141,29 +149,34 @@ $qp = compact('search', 'structure', 'state', 'page');
                     $stateBadge = '<span class="badge bg-secondary">' . htmlspecialchars($lic['state'] ?? '?') . '</span>';
                 }
 
-                $structCode = $lic['structure_code'] ?? null;
-                $color = $structureColors[$structCode ?? ''] ?? 'secondary';
-
-                $qty   = (int)$lic['quantity'];
-                $used  = (int)$lic['usage_count'];
-                $free  = (int)$lic['seats_free'];
-                $pct   = $qty > 0 ? round($used / $qty * 100) : 0;
+                $qty      = (int)$lic['quantity'];
+                $used     = (int)$lic['usage_count'];
+                $free     = (int)$lic['seats_free'];
+                $pct      = $qty > 0 ? round($used / $qty * 100) : 0;
                 $barClass = $pct >= 90 ? 'bg-danger' : ($pct >= 70 ? 'bg-warning' : 'bg-success');
+
+                $clientTags = parseTagsEset($lic['client_tags_raw'] ?? null);
             ?>
             <tr>
-                <td>
-                    <?php if ($structCode): ?>
-                        <span class="badge bg-<?= $color ?>"><?= htmlspecialchars($structCode) ?></span>
-                    <?php else: ?>
-                        <span class="text-body-secondary">—</span>
-                    <?php endif; ?>
-                </td>
                 <td>
                     <?php if ($lic['client_name']): ?>
                         <span class="fw-medium"><?= htmlspecialchars($lic['client_name']) ?></span>
                         <br><small class="text-body-secondary font-monospace"><?= htmlspecialchars($lic['client_number']) ?></small>
                     <?php else: ?>
                         <em class="text-body-secondary small">Non mappé</em>
+                    <?php endif; ?>
+                </td>
+                <td style="min-width:100px">
+                    <?php if (!empty($clientTags)): ?>
+                        <div class="d-flex flex-wrap gap-1">
+                            <?php foreach ($clientTags as $tag): ?>
+                            <span class="badge rounded-pill" style="background-color:<?= htmlspecialchars($tag['color']) ?>">
+                                <?= htmlspecialchars($tag['name']) ?>
+                            </span>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else: ?>
+                        <span class="text-body-secondary">—</span>
                     <?php endif; ?>
                 </td>
                 <td class="small">
@@ -210,7 +223,7 @@ $qp = compact('search', 'structure', 'state', 'page');
 <?php if ($total > $perPage): ?>
 <?php
 $totalPages = (int)ceil($total / $perPage);
-$queryBase  = http_build_query(['search' => $search, 'structure' => $structure, 'state' => $state, 'sort' => $sortBy, 'dir' => $sortDir]);
+$queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'state' => $state, 'sort' => $sortBy, 'dir' => $sortDir]);
 ?>
 <nav>
     <ul class="pagination pagination-sm justify-content-end">
