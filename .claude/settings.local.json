@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:help.eset.com)"
+      "WebFetch(domain:help.eset.com)",
+      "WebFetch(domain:bump.sh)"
     ]
   }
 }

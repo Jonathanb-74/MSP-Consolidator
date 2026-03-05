@@ -3,6 +3,7 @@
 
 $providerIcons = [
     'eset'       => ['icon' => 'bi-shield-lock',  'color' => 'text-success'],
+    'becloud'    => ['icon' => 'bi-cloud-check',  'color' => 'text-info'],
     'ninjaone'   => ['icon' => 'bi-hdd-network',  'color' => 'text-info'],
     'wasabi'     => ['icon' => 'bi-cloud',         'color' => 'text-warning'],
     'veeam'      => ['icon' => 'bi-archive',       'color' => 'text-primary'],
@@ -117,13 +118,14 @@ function syncStatusBadge(?string $status): string {
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <?php if ($db && $db['is_enabled'] && $code === 'eset'): ?>
+                                <?php if ($db && $db['is_enabled'] && in_array($code, ['eset', 'becloud'])): ?>
                                     <button class="btn btn-sm btn-outline-primary py-0 px-2 btn-sync-conn"
                                             data-connection-id="<?= (int)$db['id'] ?>"
+                                            data-provider-code="<?= htmlspecialchars($code) ?>"
                                             data-connection-name="<?= htmlspecialchars($db['name']) ?>">
                                         <i class="bi bi-arrow-repeat"></i>
                                     </button>
-                                <?php elseif ($db && $code !== 'eset'): ?>
+                                <?php elseif ($db): ?>
                                     <span class="text-body-secondary small">—</span>
                                 <?php endif; ?>
                             </td>
@@ -145,10 +147,10 @@ function syncStatusBadge(?string $status): string {
                 </table>
             <?php endif; ?>
         </div>
-        <?php if ($code === 'eset'): ?>
+        <?php if (in_array($code, ['eset', 'becloud'])): ?>
         <div class="card-footer text-body-secondary small">
             <i class="bi bi-info-circle me-1"></i>
-            Pour ajouter une connexion ESET, éditez <code>config/providers.php</code>,
+            Pour ajouter une connexion, éditez <code>config/providers.php</code>,
             puis cliquez sur <strong>Synchroniser depuis la config</strong>.
         </div>
         <?php endif; ?>
@@ -225,12 +227,13 @@ function syncStatusBadge(?string $status): string {
         });
     });
 
-    // ── Sync par connexion (ESET) ─────────────────────────────────────────
+    // ── Sync par connexion ────────────────────────────────────────────────
     document.querySelectorAll('.btn-sync-conn').forEach(btn => {
         btn.addEventListener('click', function () {
-            const connectionId = this.dataset.connectionId;
+            const connectionId   = this.dataset.connectionId;
+            const providerCode   = this.dataset.providerCode || 'eset';
             if (typeof window.openSyncModal === 'function') {
-                window.openSyncModal(parseInt(connectionId));
+                window.openSyncModal(parseInt(connectionId), providerCode);
             }
         });
     });

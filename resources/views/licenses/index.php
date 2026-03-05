@@ -61,10 +61,8 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
     <div class="col-md-3">
         <select name="provider" class="form-select form-select-sm">
             <option value="" <?= $providerFilter === '' ? 'selected' : '' ?>>Tous les clients</option>
-            <option value="eset" <?= $providerFilter === 'eset' ? 'selected' : '' ?>>
-                Avec licences ESET
-            </option>
-            <!-- Autres fournisseurs à ajouter ici -->
+            <option value="eset"    <?= $providerFilter === 'eset'    ? 'selected' : '' ?>>Avec licences ESET</option>
+            <option value="becloud" <?= $providerFilter === 'becloud' ? 'selected' : '' ?>>Avec abonnements Be-Cloud</option>
         </select>
     </div>
     <div class="col-auto">
@@ -89,14 +87,13 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                     <i class="bi bi-shield-lock me-1 text-success"></i>
                     <?= licSortLink('eset_count', $sortBy, $sortDir, 'ESET', $qp) ?>
                 </th>
+                <th>
+                    <i class="bi bi-cloud-check me-1 text-info"></i>
+                    <?= licSortLink('bc_count', $sortBy, $sortDir, 'Be-Cloud', $qp) ?>
+                </th>
                 <th class="text-body-secondary">
                     <i class="bi bi-hdd-network me-1 opacity-50"></i>
                     <span class="opacity-50">NinjaOne</span>
-                    <span class="badge bg-secondary ms-1" style="font-size:.65rem">bientôt</span>
-                </th>
-                <th class="text-body-secondary">
-                    <i class="bi bi-microsoft me-1 opacity-50"></i>
-                    <span class="opacity-50">Microsoft</span>
                     <span class="badge bg-secondary ms-1" style="font-size:.65rem">bientôt</span>
                 </th>
                 <th class="text-body-secondary">
@@ -109,7 +106,7 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
         <tbody>
             <?php if (empty($clients)): ?>
             <tr>
-                <td colspan="7" class="text-center text-body-secondary py-5">
+                <td colspan="8" class="text-center text-body-secondary py-5">
                     <i class="bi bi-grid-3x3 fs-1 d-block mb-2 opacity-25"></i>
                     Aucun client trouvé.
                 </td>
@@ -123,6 +120,10 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                 $esetUsed    = (int)($client['eset_seats_used'] ?? 0);
                 $esetOver    = $esetTotal > 0 && $esetUsed > $esetTotal;
                 $esetPct     = $esetTotal > 0 ? min(100, (int)round($esetUsed / $esetTotal * 100)) : 0;
+                $bcCount     = (int)($client['bc_sub_count'] ?? 0);
+                $bcTotal     = (int)($client['bc_seats_total'] ?? 0);
+                $bcUsed      = (int)($client['bc_seats_used'] ?? 0);
+                $bcOver      = $bcTotal > 0 && $bcUsed > $bcTotal;
                 $detailId    = 'detail-' . $client['id'];
                 $clientDetails = $esetDetails[$client['id']] ?? [];
             ?>
@@ -166,14 +167,31 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                         <span class="text-body-secondary" style="font-size:.78rem;opacity:.6">· non mappé</span>
                     <?php endif; ?>
                 </td>
-                <td class="text-body-secondary small">—</td>
+                <td>
+                    <?php if ($bcCount > 0): ?>
+                        <span class="badge bg-secondary me-1"><?= $bcCount ?> sub</span>
+                        <?php if ($bcOver): ?>
+                            <span class="small fw-semibold text-danger">
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i><?= $bcUsed ?>/<?= $bcTotal ?>
+                            </span>
+                        <?php else: ?>
+                            <span class="small text-body-secondary"><?= $bcUsed ?>/<?= $bcTotal ?></span>
+                        <?php endif; ?>
+                        <div class="progress mt-1" style="height:4px;max-width:80px">
+                            <div class="progress-bar text-info <?= $bcOver ? 'bg-danger' : ($bcUsed === $bcTotal ? 'bg-success' : 'bg-info') ?>"
+                                 style="width:100%"></div>
+                        </div>
+                    <?php else: ?>
+                        <span class="text-body-secondary" style="font-size:.78rem;opacity:.6">· non mappé</span>
+                    <?php endif; ?>
+                </td>
                 <td class="text-body-secondary small">—</td>
                 <td class="text-body-secondary small">—</td>
             </tr>
 
             <!-- Ligne détail (collapse) -->
             <tr class="collapse" id="<?= $detailId ?>">
-                <td colspan="7" class="p-0">
+                <td colspan="8" class="p-0">
                     <div class="px-4 py-3 border-start border-4 border-primary-subtle bg-body-secondary">
                         <div class="row g-3">
 
@@ -232,15 +250,45 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                                 <?php endif; ?>
                             </div>
 
+                            <!-- Bloc Be-Cloud -->
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="bi bi-cloud-check text-info me-2"></i>
+                                    <strong class="small">Be-Cloud</strong>
+                                </div>
+                                <?php if ($bcCount > 0): ?>
+                                    <div class="small text-body-secondary">
+                                        <span class="badge bg-secondary me-1"><?= $bcCount ?> abonnement(s)</span>
+                                        <?php if ($bcOver): ?>
+                                            <span class="fw-semibold text-danger">
+                                                <i class="bi bi-exclamation-triangle-fill me-1"></i><?= $bcUsed ?>/<?= $bcTotal ?>
+                                            </span>
+                                        <?php else: ?>
+                                            <?= $bcUsed ?>/<?= $bcTotal ?> assignés
+                                        <?php endif; ?>
+                                        <div class="progress mt-1" style="height:4px;max-width:80px">
+                                            <div class="progress-bar <?= $bcOver ? 'bg-danger' : 'bg-info' ?>"
+                                                 style="width:100%"></div>
+                                        </div>
+                                    </div>
+                                    <a href="/becloud/licenses?search=<?= urlencode($client['name']) ?>" class="small">
+                                        Voir les abonnements
+                                    </a>
+                                <?php else: ?>
+                                    <p class="text-body-secondary small mb-0">
+                                        <i class="bi bi-exclamation-circle me-1"></i>
+                                        Aucun mapping confirmé.
+                                        <a href="/mapping?provider=becloud" class="small">Configurer</a>
+                                    </p>
+                                <?php endif; ?>
+                            </div>
+
                             <!-- Blocs futurs fournisseurs -->
-                            <div class="col-md-7">
+                            <div class="col-md-3">
                                 <div class="d-flex flex-wrap gap-3 pt-1">
                                     <?php foreach ([
-                                        ['bi-hdd-network',  'NinjaOne'],
-                                        ['bi-microsoft',    'Microsoft'],
-                                        ['bi-archive',      'Veeam'],
-                                        ['bi-cloud',        'Wasabi'],
-                                        ['bi-server',       'Infomaniak'],
+                                        ['bi-hdd-network', 'NinjaOne'],
+                                        ['bi-archive',     'Veeam'],
                                     ] as [$icon, $name]): ?>
                                     <div class="text-body-secondary small d-flex align-items-center gap-1 opacity-50">
                                         <i class="bi <?= $icon ?>"></i>

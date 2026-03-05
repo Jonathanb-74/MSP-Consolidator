@@ -33,8 +33,9 @@ class EsetApiClient extends ApiClient
      */
     public function __construct(array $credentials, EsetTokenCache $tokenCache)
     {
-        $this->baseUrl    = rtrim($credentials['base_url'], '/');
-        $this->tokenCache = $tokenCache;
+        $this->baseUrl            = rtrim($credentials['base_url'], '/');
+        $this->tokenCache         = $tokenCache;
+        $this->authExceptionClass = EsetAuthException::class;
     }
 
     // ── Companies ──────────────────────────────────────────────────

@@ -31,7 +31,7 @@ class MappingController extends Controller
         $offset    = ($page - 1) * $perPage;
 
         $allowedSorts = [
-            'company'   => 'ec.name',
+            'company'   => 'prov_tbl.name',
             'client'    => 'c.name',
             'method'    => 'cpm.mapping_method',
             'score'     => 'cpm.match_score',
@@ -50,11 +50,22 @@ class MappingController extends Controller
             return;
         }
 
+        // Table et colonne ID selon le provider
+        if ($provider === 'becloud') {
+            $provJoin       = "JOIN be_cloud_customers prov_tbl ON prov_tbl.be_cloud_customer_id = cpm.provider_client_id";
+            $unmappedSelect = "SELECT prov_tbl.be_cloud_customer_id AS provider_client_id, prov_tbl.name, prov_tbl.internal_identifier AS custom_identifier FROM be_cloud_customers prov_tbl";
+            $unmappedCond   = "prov_tbl.be_cloud_customer_id NOT IN (SELECT provider_client_id FROM client_provider_mappings WHERE provider_id = ?)";
+        } else {
+            $provJoin       = "JOIN eset_companies prov_tbl ON prov_tbl.eset_company_id = cpm.provider_client_id";
+            $unmappedSelect = "SELECT prov_tbl.eset_company_id AS provider_client_id, prov_tbl.name, prov_tbl.custom_identifier FROM eset_companies prov_tbl";
+            $unmappedCond   = "prov_tbl.eset_company_id NOT IN (SELECT provider_client_id FROM client_provider_mappings WHERE provider_id = ?)";
+        }
+
         $conditions = ["cpm.provider_id = ?"];
         $queryParams = [(int)$providerRow['id']];
 
         if ($search !== '') {
-            $conditions[] = "(ec.name LIKE ? OR c.name LIKE ? OR c.client_number LIKE ?)";
+            $conditions[] = "(prov_tbl.name LIKE ? OR c.name LIKE ? OR c.client_number LIKE ?)";
             $like = '%' . $search . '%';
             array_push($queryParams, $like, $like, $like);
         }
@@ -75,7 +86,7 @@ class MappingController extends Controller
         $total = $this->db->count(
             "SELECT COUNT(*)
              FROM client_provider_mappings cpm
-             JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
+             $provJoin
              JOIN clients c ON c.id = cpm.client_id
              $whereSql",
             $queryParams
@@ -94,24 +105,17 @@ class MappingController extends Controller
                 c.name AS client_name,
                 c.client_number
              FROM client_provider_mappings cpm
-             JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
+             $provJoin
              JOIN clients c ON c.id = cpm.client_id
              $whereSql
-             ORDER BY $orderCol $sortDir, ec.name ASC
+             ORDER BY $orderCol $sortDir, prov_tbl.name ASC
              LIMIT $perPage OFFSET $offset",
             $queryParams
         );
 
-        // Companies sans mapping pour permettre la liaison manuelle
+        // Entrées sans mapping pour permettre la liaison manuelle
         $unmapped = $this->db->fetchAll(
-            "SELECT ec.eset_company_id, ec.name, ec.custom_identifier
-             FROM eset_companies ec
-             WHERE ec.eset_company_id NOT IN (
-                 SELECT provider_client_id FROM client_provider_mappings
-                 WHERE provider_id = ?
-             )
-             ORDER BY ec.name
-             LIMIT 200",
+            "$unmappedSelect WHERE $unmappedCond ORDER BY prov_tbl.name LIMIT 200",
             [(int)$providerRow['id']]
         );
 
@@ -182,6 +186,12 @@ class MappingController extends Controller
         if ($providerCode === 'eset') {
             $company = $this->db->fetchOne(
                 "SELECT name FROM eset_companies WHERE eset_company_id = ? LIMIT 1",
+                [$providerClientId]
+            );
+            $companyName = $company['name'] ?? null;
+        } elseif ($providerCode === 'becloud') {
+            $company = $this->db->fetchOne(
+                "SELECT name FROM be_cloud_customers WHERE be_cloud_customer_id = ? LIMIT 1",
                 [$providerClientId]
             );
             $companyName = $company['name'] ?? null;

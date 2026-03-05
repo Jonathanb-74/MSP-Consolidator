@@ -59,7 +59,8 @@
         <!-- Fournisseurs (chargés depuis DB) -->
         <?php
         $_sidebarProviderMeta = [
-            'eset'       => ['icon' => 'bi-shield-lock',  'color' => 'text-success', 'url' => '/eset/licenses', 'prefix' => '/eset'],
+            'eset'       => ['icon' => 'bi-shield-lock',  'color' => 'text-success', 'url' => '/eset/licenses',     'prefix' => '/eset'],
+            'becloud'    => ['icon' => 'bi-cloud-check',  'color' => 'text-info',    'url' => '/becloud/licenses', 'prefix' => '/becloud'],
             'ninjaone'   => ['icon' => 'bi-hdd-network',  'color' => 'text-info'],
             'wasabi'     => ['icon' => 'bi-cloud',         'color' => 'text-warning'],
             'veeam'      => ['icon' => 'bi-archive',       'color' => 'text-primary'],
@@ -396,15 +397,18 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
         }
     }
 
-    function showRunning() {
+    function showRunning(providerCode) {
         syncDone = false;
         let seconds = 0;
+        const hint = providerCode === 'becloud'
+            ? 'Récupération des customers et des abonnements Be-Cloud'
+            : 'Récupération des companies et des licences ESET';
         modalBody.innerHTML = `
             <div class="text-center py-3">
                 <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem" role="status"></div>
                 <p class="fw-medium mb-1">Synchronisation en cours…</p>
                 <p class="text-body-secondary small" id="syncElapsed">0s</p>
-                <p class="text-body-secondary small mt-1">Récupération des companies et des licences ESET</p>
+                <p class="text-body-secondary small mt-1">${hint}</p>
             </div>`;
         if (modalClose) modalClose.disabled = true;
         clearInterval(elapsedTimer);
@@ -418,16 +422,32 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
         }, 1000);
     }
 
-    function showResult(data) {
+    function showResult(data, providerCode) {
         clearInterval(elapsedTimer);
         if (modalClose) modalClose.disabled = false;
         syncDone = true;
 
         const s      = data.summary ?? {};
-        const co     = s.companies ?? {};
-        const li     = s.licenses  ?? {};
         const errors = s.errors ?? [];
         const ok     = data.status === 'success';
+
+        // Clés selon le provider
+        let block1, block2;
+        if (providerCode === 'becloud') {
+            const cu = s.customers      ?? {};
+            const su = s.subscriptions  ?? {};
+            block1 = { count: cu.fetched ?? 0, label: 'Customers',      created: cu.created ?? 0, updated: cu.updated ?? 0 };
+            block2 = { count: su.fetched ?? 0, label: 'Abonnements',    created: su.created ?? 0, updated: su.updated ?? 0 };
+        } else {
+            const co = s.companies ?? {};
+            const li = s.licenses  ?? {};
+            block1 = { count: co.fetched ?? 0, label: 'Companies',  created: co.created ?? 0, updated: co.updated ?? 0 };
+            block2 = { count: li.fetched ?? 0, label: 'Licences',   created: li.created ?? 0, updated: li.updated ?? 0 };
+        }
+
+        // Lien logs dans le footer
+        const logsLink = document.querySelector('#syncModal .modal-footer a');
+        if (logsLink) logsLink.href = '/' + (providerCode || 'eset') + '/sync-logs';
 
         let errHtml = '';
         if (errors.length) {
@@ -445,23 +465,23 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
             <div class="row g-2 text-center">
                 <div class="col-6">
                     <div class="border rounded p-2">
-                        <div class="fs-3 fw-bold">${co.fetched ?? 0}</div>
-                        <div class="small text-body-secondary">Companies</div>
+                        <div class="fs-3 fw-bold">${block1.count}</div>
+                        <div class="small text-body-secondary">${block1.label}</div>
                         <div class="small">
-                            <span class="text-success">+${co.created ?? 0} créées</span>
+                            <span class="text-success">+${block1.created} créés</span>
                             &nbsp;·&nbsp;
-                            <span class="text-info">${co.updated ?? 0} màj</span>
+                            <span class="text-info">${block1.updated} màj</span>
                         </div>
                     </div>
                 </div>
                 <div class="col-6">
                     <div class="border rounded p-2">
-                        <div class="fs-3 fw-bold">${li.fetched ?? 0}</div>
-                        <div class="small text-body-secondary">Licences</div>
+                        <div class="fs-3 fw-bold">${block2.count}</div>
+                        <div class="small text-body-secondary">${block2.label}</div>
                         <div class="small">
-                            <span class="text-success">+${li.created ?? 0} créées</span>
+                            <span class="text-success">+${block2.created} créés</span>
                             &nbsp;·&nbsp;
-                            <span class="text-info">${li.updated ?? 0} màj</span>
+                            <span class="text-info">${block2.updated} màj</span>
                         </div>
                     </div>
                 </div>
@@ -483,31 +503,52 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
 
     // Fonction globale — appelable depuis n'importe quelle page
     // connectionId (optionnel) : si fourni, sync uniquement cette connexion
-    window.openSyncModal = function (connectionId) {
-        showRunning();
+    // providerCode (optionnel) : 'eset' (défaut) ou 'becloud'
+    window.openSyncModal = function (connectionId, providerCode) {
+        providerCode = providerCode || 'eset';
+        const syncUrl   = '/' + providerCode + '/sync';
+        const statusUrl = '/' + providerCode + '/sync-status';
+
+        // Adapter le titre de la modal
+        const titleEl = document.getElementById('syncModalTitle');
+        if (titleEl) {
+            if (providerCode === 'becloud') {
+                titleEl.innerHTML = '<i class="bi bi-cloud-check text-info me-2"></i>Synchronisation Be-Cloud';
+            } else {
+                titleEl.innerHTML = '<i class="bi bi-shield-lock text-success me-2"></i>Synchronisation ESET';
+            }
+        }
+
+        showRunning(providerCode);
         bsModal.show();
 
-        // Mise à jour du badge en mode "chargement"
-        if (badge) { badge.className = 'badge bg-primary'; badge.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.65em;height:.65em"></span>'; }
-        if (btnHeader) btnHeader.disabled = true;
+        // Mise à jour du badge en mode "chargement" (uniquement pour ESET dans le header)
+        if (providerCode === 'eset') {
+            if (badge) { badge.className = 'badge bg-primary'; badge.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.65em;height:.65em"></span>'; }
+            if (btnHeader) btnHeader.disabled = true;
+        }
 
         const body = new FormData();
         if (connectionId) body.append('connection_id', connectionId);
 
-        fetch('/eset/sync', { method: 'POST', body, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        fetch(syncUrl, { method: 'POST', body, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(r => r.json())
             .then(data => {
                 if (data.status === 'already_running') {
                     showError(data.message);
                 } else {
-                    showResult(data);
+                    showResult(data, providerCode);
                 }
-                // Rafraîchir le badge
-                fetch('/eset/sync-status').then(r => r.json()).then(updateBadge).catch(() => {});
+                // Rafraîchir le badge ESET si c'était une sync ESET
+                if (providerCode === 'eset') {
+                    fetch('/eset/sync-status').then(r => r.json()).then(updateBadge).catch(() => {});
+                }
             })
             .catch(err => {
                 showError('Erreur réseau : ' + (err.message || err));
-                fetch('/eset/sync-status').then(r => r.json()).then(updateBadge).catch(() => {});
+                if (providerCode === 'eset') {
+                    fetch('/eset/sync-status').then(r => r.json()).then(updateBadge).catch(() => {});
+                }
             });
     };
 

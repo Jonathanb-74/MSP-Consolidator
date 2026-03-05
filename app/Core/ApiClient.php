@@ -17,6 +17,12 @@ abstract class ApiClient
         'Accept: application/json',
     ];
 
+    /**
+     * Classe d'exception levée sur HTTP 401.
+     * Chaque module API peut surcharger cette propriété.
+     */
+    protected string $authExceptionClass = RuntimeException::class;
+
     protected function post(string $endpoint, array $body = [], array $headers = []): array
     {
         return $this->request('POST', $endpoint, $body, $headers);
@@ -70,7 +76,7 @@ abstract class ApiClient
         }
 
         if ($httpCode === 401) {
-            throw new \App\Modules\Eset\Exception\EsetAuthException("Token invalide ou expiré (HTTP 401).");
+            throw new $this->authExceptionClass("Token invalide ou expiré (HTTP 401).");
         }
 
         if ($httpCode >= 400) {

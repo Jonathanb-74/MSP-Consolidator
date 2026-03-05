@@ -31,6 +31,7 @@ use App\Controllers\LicenseController;
 use App\Controllers\MappingController;
 use App\Controllers\SettingsController;
 use App\Modules\Eset\EsetController;
+use App\Modules\BeCloud\BeCloudController;
 
 $router = new Router();
 
@@ -68,6 +69,13 @@ $router->post('/eset/sync',         [EsetController::class, 'sync']);
 $router->post('/eset/sync-cancel',  [EsetController::class, 'syncCancel']);
 $router->get('/eset/sync-status',   [EsetController::class, 'syncStatus']);
 $router->get('/eset/debug-license', [EsetController::class, 'debugLicense']);
+
+// Be-Cloud
+$router->get('/becloud/licenses',     [BeCloudController::class, 'licenses']);
+$router->get('/becloud/sync-logs',    [BeCloudController::class, 'syncLogs']);
+$router->post('/becloud/sync',        [BeCloudController::class, 'sync']);
+$router->post('/becloud/sync-cancel', [BeCloudController::class, 'syncCancel']);
+$router->get('/becloud/sync-status',  [BeCloudController::class, 'syncStatus']);
 
 // Paramètres
 $router->get('/settings/connections',             [SettingsController::class, 'connections']);

@@ -34,13 +34,15 @@ class LicenseController extends Controller
             'client_number' => 'c.client_number',
             'eset_count'    => 'eset_lic_count',
             'eset_usage'    => 'eset_usage_pct',
+            'bc_count'      => 'bc_sub_count',
         ];
         $orderCol = $allowedSorts[$sortBy] ?? 'c.name';
 
         // HAVING : filtre par présence de licences fournisseur
         $havingSql = match($providerFilter) {
-            'eset' => 'HAVING eset_lic_count > 0',
-            default => '',
+            'eset'    => 'HAVING eset_lic_count > 0',
+            'becloud' => 'HAVING bc_sub_count > 0',
+            default   => '',
         };
 
         [$whereSql, $whereParams] = $this->buildWhere($search, $tagId);
@@ -86,7 +88,10 @@ class LicenseController extends Controller
                 COALESCE(SUM(el.quantity), 0)                              AS eset_seats_total,
                 COALESCE(SUM(el.usage_count), 0)                           AS eset_seats_used,
                 ROUND(COALESCE(SUM(el.usage_count), 0)
-                      / NULLIF(COALESCE(SUM(el.quantity), 0), 0) * 100)    AS eset_usage_pct
+                      / NULLIF(COALESCE(SUM(el.quantity), 0), 0) * 100)    AS eset_usage_pct,
+                COALESCE(bc_agg.bc_sub_count, 0)                           AS bc_sub_count,
+                COALESCE(bc_agg.bc_seats_total, 0)                         AS bc_seats_total,
+                COALESCE(bc_agg.bc_seats_used, 0)                          AS bc_seats_used
              FROM clients c
              LEFT JOIN client_tags ct ON ct.client_id = c.id
              LEFT JOIN client_provider_mappings cpm
@@ -95,6 +100,19 @@ class LicenseController extends Controller
                 AND cpm.is_confirmed = 1
              LEFT JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
              LEFT JOIN eset_licenses el  ON el.eset_company_id = ec.eset_company_id
+             LEFT JOIN (
+                SELECT cpm2.client_id,
+                       COUNT(DISTINCT bs.id)       AS bc_sub_count,
+                       SUM(bs.quantity)             AS bc_seats_total,
+                       SUM(bs.assigned_licenses)    AS bc_seats_used
+                FROM be_cloud_subscriptions bs
+                JOIN be_cloud_customers bc ON bc.be_cloud_customer_id = bs.be_cloud_customer_id
+                JOIN client_provider_mappings cpm2
+                     ON cpm2.connection_id = bc.connection_id
+                     AND cpm2.provider_client_id = bc.be_cloud_customer_id
+                     AND cpm2.is_confirmed = 1
+                GROUP BY cpm2.client_id
+             ) bc_agg ON bc_agg.client_id = c.id
              $whereSql
              GROUP BY c.id
              $havingSql
@@ -145,6 +163,7 @@ class LicenseController extends Controller
             'sortBy'         => $sortBy,
             'sortDir'        => $sortDir,
             'providerFilter' => $providerFilter,
+            'bcDetails'      => [],
         ]);
     }
 
