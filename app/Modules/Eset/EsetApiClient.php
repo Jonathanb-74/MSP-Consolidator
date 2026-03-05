@@ -27,10 +27,13 @@ class EsetApiClient extends ApiClient
     // Délai entre appels paginés pour respecter le rate limit (110ms > 100ms = 10 req/s)
     private const RATE_LIMIT_SLEEP_US = 110_000;
 
-    public function __construct(EsetTokenCache $tokenCache)
+    /**
+     * @param array          $credentials  Connexion depuis ProviderConfig::findConnection('eset', $key)
+     * @param EsetTokenCache $tokenCache   Instance déjà créée avec les mêmes credentials
+     */
+    public function __construct(array $credentials, EsetTokenCache $tokenCache)
     {
-        $config = require dirname(__DIR__, 3) . '/config/providers.php';
-        $this->baseUrl    = rtrim($config['eset']['base_url'], '/');
+        $this->baseUrl    = rtrim($credentials['base_url'], '/');
         $this->tokenCache = $tokenCache;
     }
 

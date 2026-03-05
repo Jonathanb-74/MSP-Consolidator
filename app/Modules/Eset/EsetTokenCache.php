@@ -25,15 +25,20 @@ class EsetTokenCache
     // Renouveler 60s avant expiration
     private const SAFETY_MARGIN_SECONDS = 60;
 
-    public function __construct()
+    /**
+     * @param array $credentials  Connexion depuis ProviderConfig::findConnection('eset', $key)
+     *                            Doit contenir : username, password, base_url, key (optionnel)
+     */
+    public function __construct(array $credentials)
     {
-        $appConfig      = require dirname(__DIR__, 3) . '/config/app.php';
-        $providerConfig = require dirname(__DIR__, 3) . '/config/providers.php';
+        $appConfig = require dirname(__DIR__, 3) . '/config/app.php';
 
-        $this->cacheFile = $appConfig['cache_path'] . '/eset_token.json';
-        $this->authUrl   = rtrim($providerConfig['eset']['base_url'], '/') . '/Token/Get';
-        $this->username  = $providerConfig['eset']['username'];
-        $this->password  = $providerConfig['eset']['password'];
+        // Clé de cache unique par connexion (évite les collisions entre plusieurs consoles ESET)
+        $cacheKey        = $credentials['key'] ?? md5($credentials['username'] ?? '');
+        $this->cacheFile = $appConfig['cache_path'] . '/eset_token_' . preg_replace('/[^a-z0-9_]/', '_', $cacheKey) . '.json';
+        $this->authUrl   = rtrim($credentials['base_url'], '/') . '/Token/Get';
+        $this->username  = $credentials['username'];
+        $this->password  = $credentials['password'];
         $this->sslVerify = (bool)$appConfig['ssl_verify'];
     }
 

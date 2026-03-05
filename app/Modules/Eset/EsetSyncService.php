@@ -18,6 +18,7 @@ class EsetSyncService
     private Database $db;
     private EsetApiClient $api;
     private int $providerId;
+    private int $connectionId;
 
     // Seuil similarité nom pour auto-mapping (0-100)
     private const NAME_SIMILARITY_THRESHOLD = 80;
@@ -25,18 +26,20 @@ class EsetSyncService
     // Heures avant re-fetch du détail pour une licence stable (sync incrémentale)
     private const DETAIL_REFRESH_HOURS = 4;
 
-    public function __construct(Database $db, EsetApiClient $api)
+    public function __construct(Database $db, EsetApiClient $api, int $connectionId)
     {
-        $this->db  = $db;
-        $this->api = $api;
+        $this->db           = $db;
+        $this->api          = $api;
+        $this->connectionId = $connectionId;
 
-        $provider = $this->db->fetchOne(
-            "SELECT id FROM providers WHERE code = 'eset' LIMIT 1"
+        $connection = $this->db->fetchOne(
+            "SELECT pc.id, pc.provider_id FROM provider_connections pc WHERE pc.id = ?",
+            [$connectionId]
         );
-        if (!$provider) {
-            throw new \RuntimeException("Fournisseur 'eset' introuvable en base.");
+        if (!$connection) {
+            throw new \RuntimeException("Connexion ESET #{$connectionId} introuvable en base.");
         }
-        $this->providerId = (int)$provider['id'];
+        $this->providerId = (int)$connection['provider_id'];
     }
 
     /**
@@ -45,8 +48,14 @@ class EsetSyncService
      */
     public function syncAll(string $triggeredBy = 'cron'): array
     {
-        $this->log("=== Démarrage sync ESET (déclenché par: {$triggeredBy}) ===");
+        $this->log("=== Démarrage sync ESET connexion #{$this->connectionId} (déclenché par: {$triggeredBy}) ===");
         $logId = $this->startSyncLog($triggeredBy);
+
+        // Marquer la connexion comme en cours
+        $this->db->execute(
+            "UPDATE provider_connections SET sync_status = 'running', updated_at = NOW() WHERE id = ?",
+            [$this->connectionId]
+        );
 
         $summary = [
             'companies' => ['fetched' => 0, 'created' => 0, 'updated' => 0],
@@ -81,17 +90,25 @@ class EsetSyncService
 
             $this->finishSyncLog($logId, 'success', $totalFetched, $totalCreated, $totalUpdated);
 
-            // Mettre à jour last_sync_at du provider
+            // Mettre à jour provider_connections + providers
+            $this->db->execute(
+                "UPDATE provider_connections SET last_sync_at = NOW(), sync_status = 'success', updated_at = NOW() WHERE id = ?",
+                [$this->connectionId]
+            );
             $this->db->execute(
                 "UPDATE providers SET last_sync_at = NOW() WHERE id = ?",
                 [$this->providerId]
             );
 
-            $this->log("=== Sync ESET terminée avec succès ===");
+            $this->log("=== Sync ESET connexion #{$this->connectionId} terminée avec succès ===");
         } catch (Throwable $e) {
             $summary['errors'][] = $e->getMessage();
             $this->log("=== ERREUR sync ESET : " . $e->getMessage() . " ===");
             $this->finishSyncLog($logId, 'error', 0, 0, 0, $e->getMessage());
+            $this->db->execute(
+                "UPDATE provider_connections SET sync_status = 'error', updated_at = NOW() WHERE id = ?",
+                [$this->connectionId]
+            );
         }
 
         return $summary;
@@ -122,8 +139,8 @@ class EsetSyncService
             $parentEsetId     = $company['ParentId']         ?? $company['parentId']         ?? null;
 
             $exists = $this->db->fetchOne(
-                "SELECT id FROM eset_companies WHERE eset_company_id = ? LIMIT 1",
-                [$companyId]
+                "SELECT id FROM eset_companies WHERE eset_company_id = ? AND connection_id = ? LIMIT 1",
+                [$companyId, $this->connectionId]
             );
 
             $now = date('Y-m-d H:i:s');
@@ -135,24 +152,25 @@ class EsetSyncService
                         custom_identifier = ?, email = ?, vat_id = ?,
                         description = ?, parent_eset_id = ?,
                         raw_data = ?, last_sync_at = ?, updated_at = ?
-                     WHERE eset_company_id = ?",
+                     WHERE eset_company_id = ? AND connection_id = ?",
                     [
                         $name, $companyTypeId, $statusId,
                         $customIdentifier, $email, $vatId,
                         $description, $parentEsetId,
                         json_encode($company), $now, $now,
-                        $companyId,
+                        $companyId, $this->connectionId,
                     ]
                 );
                 $updated++;
             } else {
                 $this->db->execute(
                     "INSERT INTO eset_companies
-                        (eset_company_id, name, company_type_id, status_id,
+                        (connection_id, eset_company_id, name, company_type_id, status_id,
                          custom_identifier, email, vat_id, description,
                          parent_eset_id, raw_data, last_sync_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [
+                        $this->connectionId,
                         $companyId, $name, $companyTypeId, $statusId,
                         $customIdentifier, $email, $vatId, $description,
                         $parentEsetId, json_encode($company), $now,
@@ -173,7 +191,8 @@ class EsetSyncService
     public function syncLicenses(): array
     {
         $allCompanies = $this->db->fetchAll(
-            "SELECT eset_company_id FROM eset_companies"
+            "SELECT eset_company_id FROM eset_companies WHERE connection_id = ?",
+            [$this->connectionId]
         );
 
         $totalFetched = 0;
@@ -318,11 +337,7 @@ class EsetSyncService
      */
     private function tryAutoMapping(string $companyId, string $companyName, ?string $customIdentifier): void
     {
-        // Note : le check d'existence se fait par (provider_id, provider_client_id, client_id)
-        // pour permettre plusieurs liaisons vers des structures différentes.
-
         // Étape 1 : correspondance exacte par custom_identifier = client_number
-        // Un même code peut exister dans plusieurs structures → créer une liaison par structure
         if (!empty($customIdentifier)) {
             $clients = $this->db->fetchAll(
                 "SELECT id FROM clients WHERE client_number = ? AND is_active = 1",
@@ -332,21 +347,20 @@ class EsetSyncService
             foreach ($clients as $client) {
                 $alreadyMapped = $this->db->fetchOne(
                     "SELECT id FROM client_provider_mappings
-                     WHERE provider_id = ? AND provider_client_id = ? AND client_id = ? LIMIT 1",
-                    [$this->providerId, $companyId, (int)$client['id']]
+                     WHERE connection_id = ? AND provider_client_id = ? AND client_id = ? LIMIT 1",
+                    [$this->connectionId, $companyId, (int)$client['id']]
                 );
                 if (!$alreadyMapped) {
                     $this->db->execute(
                         "INSERT INTO client_provider_mappings
-                            (client_id, provider_id, provider_client_id, provider_client_name,
+                            (client_id, provider_id, connection_id, provider_client_id, provider_client_name,
                              mapping_method, is_confirmed, match_score)
-                         VALUES (?, ?, ?, ?, 'client_number', 0, 100)",
-                        [(int)$client['id'], $this->providerId, $companyId, $companyName]
+                         VALUES (?, ?, ?, ?, ?, 'client_number', 0, 100)",
+                        [(int)$client['id'], $this->providerId, $this->connectionId, $companyId, $companyName]
                     );
                 }
             }
 
-            // Si au moins un match trouvé, pas besoin du match par nom
             if (!empty($clients)) {
                 return;
             }
@@ -378,16 +392,16 @@ class EsetSyncService
 
         $alreadyMapped = $this->db->fetchOne(
             "SELECT id FROM client_provider_mappings
-             WHERE provider_id = ? AND provider_client_id = ? AND client_id = ? LIMIT 1",
-            [$this->providerId, $companyId, $bestClientId]
+             WHERE connection_id = ? AND provider_client_id = ? AND client_id = ? LIMIT 1",
+            [$this->connectionId, $companyId, $bestClientId]
         );
         if (!$alreadyMapped) {
             $this->db->execute(
                 "INSERT INTO client_provider_mappings
-                    (client_id, provider_id, provider_client_id, provider_client_name,
+                    (client_id, provider_id, connection_id, provider_client_id, provider_client_name,
                      mapping_method, is_confirmed, match_score)
-                 VALUES (?, ?, ?, ?, 'name_match', 0, ?)",
-                [$bestClientId, $this->providerId, $companyId, $companyName, (int)round($bestScore)]
+                 VALUES (?, ?, ?, ?, ?, 'name_match', 0, ?)",
+                [$bestClientId, $this->providerId, $this->connectionId, $companyId, $companyName, (int)round($bestScore)]
             );
         }
     }
@@ -409,8 +423,8 @@ class EsetSyncService
     private function startSyncLog(string $triggeredBy): int
     {
         $this->db->execute(
-            "INSERT INTO sync_logs (provider_id, status, triggered_by) VALUES (?, 'running', ?)",
-            [$this->providerId, $triggeredBy]
+            "INSERT INTO sync_logs (provider_id, connection_id, status, triggered_by) VALUES (?, ?, 'running', ?)",
+            [$this->providerId, $this->connectionId, $triggeredBy]
         );
         return (int)$this->db->lastInsertId();
     }

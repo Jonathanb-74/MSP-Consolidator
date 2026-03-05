@@ -4,6 +4,7 @@ namespace App\Modules\Eset;
 
 use App\Core\Controller;
 use App\Core\Database;
+use App\Core\ProviderConfig;
 
 class EsetController extends Controller
 {
@@ -48,7 +49,7 @@ class EsetController extends Controller
             JOIN eset_companies ec ON ec.eset_company_id = el.eset_company_id
             LEFT JOIN client_provider_mappings cpm
                 ON cpm.provider_client_id = ec.eset_company_id
-                AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'eset' LIMIT 1)
+                AND cpm.connection_id = ec.connection_id
             LEFT JOIN clients c ON c.id = cpm.client_id
             LEFT JOIN client_tags ctf ON ctf.client_id = c.id
             $whereSql
@@ -72,6 +73,8 @@ class EsetController extends Controller
                 ec.eset_company_id,
                 ec.name AS company_name,
                 ec.custom_identifier,
+                ec.connection_id,
+                pc.name AS connection_name,
                 c.id AS client_id,
                 c.name AS client_name,
                 c.client_number,
@@ -83,9 +86,10 @@ class EsetController extends Controller
                 cpm.mapping_method
             FROM eset_licenses el
             JOIN eset_companies ec ON ec.eset_company_id = el.eset_company_id
+            JOIN provider_connections pc ON pc.id = ec.connection_id
             LEFT JOIN client_provider_mappings cpm
                 ON cpm.provider_client_id = ec.eset_company_id
-                AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'eset' LIMIT 1)
+                AND cpm.connection_id = ec.connection_id
             LEFT JOIN clients c ON c.id = cpm.client_id
             LEFT JOIN client_tags ctf ON ctf.client_id = c.id
             $whereSql
@@ -97,14 +101,24 @@ class EsetController extends Controller
         $licenses = $this->db->fetchAll($sql, $whereParams);
 
         $lastSync = $this->db->fetchOne(
-            "SELECT finished_at, status FROM sync_logs
-             WHERE provider_id = (SELECT id FROM providers WHERE code = 'eset')
+            "SELECT finished_at, status FROM sync_logs sl
+             JOIN providers p ON p.id = sl.provider_id
+             WHERE p.code = 'eset'
              AND status IN ('success','partial')
              ORDER BY finished_at DESC LIMIT 1"
         );
 
         $allTags = $this->db->fetchAll(
             "SELECT * FROM tags ORDER BY display_order ASC, name ASC"
+        );
+
+        // Connexions ESET actives pour affichage dans l'en-tête
+        $connections = $this->db->fetchAll(
+            "SELECT pc.id, pc.name, pc.last_sync_at, pc.sync_status
+             FROM provider_connections pc
+             JOIN providers p ON p.id = pc.provider_id
+             WHERE p.code = 'eset' AND pc.is_enabled = 1
+             ORDER BY pc.id ASC"
         );
 
         $this->render('eset/licenses', [
@@ -121,6 +135,7 @@ class EsetController extends Controller
             'sortDir'     => $sortDir,
             'lastSync'    => $lastSync,
             'allTags'     => $allTags,
+            'connections' => $connections,
         ]);
     }
 
@@ -133,20 +148,22 @@ class EsetController extends Controller
         $sortDir = strtoupper($_GET['dir'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
 
         $allowedSorts = [
-            'started'  => 'sl.started_at',
-            'finished' => 'sl.finished_at',
-            'trigger'  => 'sl.triggered_by',
-            'status'   => 'sl.status',
-            'fetched'  => 'sl.records_fetched',
-            'created'  => 'sl.records_created',
-            'updated'  => 'sl.records_updated',
+            'started'    => 'sl.started_at',
+            'finished'   => 'sl.finished_at',
+            'trigger'    => 'sl.triggered_by',
+            'status'     => 'sl.status',
+            'fetched'    => 'sl.records_fetched',
+            'created'    => 'sl.records_created',
+            'updated'    => 'sl.records_updated',
+            'connection' => 'pc.name',
         ];
         $orderCol = $allowedSorts[$sortBy] ?? 'sl.started_at';
 
         $logs = $this->db->fetchAll(
-            "SELECT sl.*, p.name AS provider_name
+            "SELECT sl.*, p.name AS provider_name, pc.name AS connection_name
              FROM sync_logs sl
              JOIN providers p ON p.id = sl.provider_id
+             LEFT JOIN provider_connections pc ON pc.id = sl.connection_id
              WHERE p.code = 'eset'
              ORDER BY $orderCol $sortDir
              LIMIT 100"
@@ -163,37 +180,64 @@ class EsetController extends Controller
 
     /**
      * POST /eset/sync — Lance une synchronisation (synchrone, attend la fin)
+     * Paramètre optionnel POST: connection_id (entier). Si absent → première connexion active.
      */
     public function sync(array $params = []): void
     {
         set_time_limit(0);
         ignore_user_abort(true);
 
-        $provider = $this->db->fetchOne(
-            "SELECT id FROM providers WHERE code = 'eset' LIMIT 1"
-        );
+        // Résoudre la connexion à utiliser
+        $connectionId = (int)($_POST['connection_id'] ?? 0);
 
-        if (!$provider) {
-            $this->json(['status' => 'error', 'message' => "Fournisseur 'eset' introuvable."], 500);
+        if ($connectionId > 0) {
+            $connection = $this->db->fetchOne(
+                "SELECT pc.id, pc.config_key, pc.is_enabled
+                 FROM provider_connections pc
+                 JOIN providers p ON p.id = pc.provider_id
+                 WHERE pc.id = ? AND p.code = 'eset'",
+                [$connectionId]
+            );
+        } else {
+            $connection = $this->db->fetchOne(
+                "SELECT pc.id, pc.config_key, pc.is_enabled
+                 FROM provider_connections pc
+                 JOIN providers p ON p.id = pc.provider_id
+                 WHERE p.code = 'eset' AND pc.is_enabled = 1
+                 ORDER BY pc.id ASC LIMIT 1"
+            );
+        }
+
+        if (!$connection) {
+            $this->json(['status' => 'error', 'message' => "Connexion ESET introuvable ou désactivée."], 500);
             return;
         }
+
+        $connectionId = (int)$connection['id'];
 
         $running = $this->db->fetchOne(
             "SELECT id FROM sync_logs
-             WHERE provider_id = ? AND status = 'running'
+             WHERE connection_id = ? AND status = 'running'
              AND started_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)
              LIMIT 1",
-            [(int)$provider['id']]
+            [$connectionId]
         );
 
         if ($running) {
-            $this->json(['status' => 'already_running', 'message' => 'Une synchronisation est déjà en cours.']);
+            $this->json(['status' => 'already_running', 'message' => 'Une synchronisation est déjà en cours pour cette connexion.']);
             return;
         }
 
-        $tokenCache  = new EsetTokenCache();
-        $apiClient   = new EsetApiClient($tokenCache);
-        $syncService = new EsetSyncService($this->db, $apiClient);
+        // Charger les credentials depuis la config
+        $credentials = ProviderConfig::findConnection('eset', $connection['config_key']);
+        if (!$credentials) {
+            $this->json(['status' => 'error', 'message' => "Credentials introuvables pour config_key '{$connection['config_key']}'."], 500);
+            return;
+        }
+
+        $tokenCache  = new EsetTokenCache($credentials);
+        $apiClient   = new EsetApiClient($credentials, $tokenCache);
+        $syncService = new EsetSyncService($this->db, $apiClient, $connectionId);
 
         $summary = $syncService->syncAll('web');
 
@@ -205,6 +249,7 @@ class EsetController extends Controller
 
     /**
      * POST /eset/sync-cancel — Arrêt forcé d'une synchronisation en cours
+     * Paramètre optionnel POST: connection_id. Si absent → annule toutes les syncs running ESET.
      */
     public function syncCancel(array $params = []): void
     {
@@ -217,15 +262,33 @@ class EsetController extends Controller
             return;
         }
 
-        $providerId = (int)$provider['id'];
+        $providerId   = (int)$provider['id'];
+        $connectionId = (int)($_POST['connection_id'] ?? 0);
 
-        // Marquer le(s) log(s) 'running' comme cancelled
-        $this->db->execute(
-            "UPDATE sync_logs
-             SET status = 'cancelled', finished_at = NOW(), error_message = 'Arrêt forcé via UI'
-             WHERE provider_id = ? AND status = 'running'",
-            [$providerId]
-        );
+        if ($connectionId > 0) {
+            $this->db->execute(
+                "UPDATE sync_logs
+                 SET status = 'cancelled', finished_at = NOW(), error_message = 'Arrêt forcé via UI'
+                 WHERE provider_id = ? AND connection_id = ? AND status = 'running'",
+                [$providerId, $connectionId]
+            );
+            $this->db->execute(
+                "UPDATE provider_connections SET sync_status = 'idle', updated_at = NOW() WHERE id = ?",
+                [$connectionId]
+            );
+        } else {
+            $this->db->execute(
+                "UPDATE sync_logs
+                 SET status = 'cancelled', finished_at = NOW(), error_message = 'Arrêt forcé via UI'
+                 WHERE provider_id = ? AND status = 'running'",
+                [$providerId]
+            );
+            $this->db->execute(
+                "UPDATE provider_connections SET sync_status = 'idle', updated_at = NOW()
+                 WHERE provider_id = ?",
+                [$providerId]
+            );
+        }
 
         // Tuer le processus via le fichier PID
         $pidFile = APP_ROOT . '/storage/sync_eset.pid';
@@ -255,18 +318,33 @@ class EsetController extends Controller
 
     /**
      * GET /eset/sync-status — Statut de la dernière synchronisation (AJAX polling)
+     * Paramètre optionnel GET: connection_id. Si absent → statut global (toutes connexions ESET).
      */
     public function syncStatus(array $params = []): void
     {
-        $latest = $this->db->fetchOne(
-            "SELECT sl.id, sl.status, sl.started_at, sl.finished_at,
-                    sl.records_fetched, sl.records_created, sl.records_updated,
-                    sl.error_message, sl.triggered_by
-             FROM sync_logs sl
-             JOIN providers p ON p.id = sl.provider_id
-             WHERE p.code = 'eset'
-             ORDER BY sl.started_at DESC LIMIT 1"
-        );
+        $connectionId = (int)($_GET['connection_id'] ?? 0);
+
+        if ($connectionId > 0) {
+            $latest = $this->db->fetchOne(
+                "SELECT sl.id, sl.status, sl.started_at, sl.finished_at,
+                        sl.records_fetched, sl.records_created, sl.records_updated,
+                        sl.error_message, sl.triggered_by
+                 FROM sync_logs sl
+                 WHERE sl.connection_id = ?
+                 ORDER BY sl.started_at DESC LIMIT 1",
+                [$connectionId]
+            );
+        } else {
+            $latest = $this->db->fetchOne(
+                "SELECT sl.id, sl.status, sl.started_at, sl.finished_at,
+                        sl.records_fetched, sl.records_created, sl.records_updated,
+                        sl.error_message, sl.triggered_by
+                 FROM sync_logs sl
+                 JOIN providers p ON p.id = sl.provider_id
+                 WHERE p.code = 'eset'
+                 ORDER BY sl.started_at DESC LIMIT 1"
+            );
+        }
 
         $this->json([
             'running' => $latest && $latest['status'] === 'running',

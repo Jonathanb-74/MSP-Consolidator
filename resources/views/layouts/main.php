@@ -56,36 +56,53 @@
 
         <hr>
 
-        <!-- Fournisseurs -->
+        <!-- Fournisseurs (chargés depuis DB) -->
+        <?php
+        $_sidebarProviderMeta = [
+            'eset'       => ['icon' => 'bi-shield-lock',  'color' => 'text-success', 'url' => '/eset/licenses', 'prefix' => '/eset'],
+            'ninjaone'   => ['icon' => 'bi-hdd-network',  'color' => 'text-info'],
+            'wasabi'     => ['icon' => 'bi-cloud',         'color' => 'text-warning'],
+            'veeam'      => ['icon' => 'bi-archive',       'color' => 'text-primary'],
+            'infomaniak' => ['icon' => 'bi-server',        'color' => 'text-secondary'],
+        ];
+        try {
+            $_sidebarDb = \App\Core\Database::getInstance();
+            $_sidebarProviders = $_sidebarDb->fetchAll("SELECT code, name FROM providers ORDER BY name ASC");
+        } catch (\Throwable $_e) {
+            $_sidebarProviders = [];
+        }
+        ?>
         <p class="text-uppercase text-body-secondary small fw-semibold px-1 mb-1">Fournisseurs</p>
         <ul class="nav nav-pills flex-column mb-auto">
+        <?php foreach ($_sidebarProviders as $_sp): ?>
+            <?php
+            $_spMeta   = $_sidebarProviderMeta[$_sp['code']] ?? ['icon' => 'bi-box', 'color' => ''];
+            $_spActive = isset($_spMeta['prefix']) && str_starts_with($_SERVER['REQUEST_URI'], $_spMeta['prefix']);
+            $_spUrl    = $_spMeta['url'] ?? null;
+            ?>
             <li class="nav-item">
-                <a href="/eset/licenses" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/eset') ? 'active' : '' ?>">
-                    <i class="bi bi-shield-lock me-2 text-success"></i>ESET
-                </a>
+                <?php if ($_spUrl): ?>
+                    <a href="<?= $_spUrl ?>" class="nav-link <?= $_spActive ? 'active' : '' ?>">
+                        <i class="bi <?= $_spMeta['icon'] ?> me-2 <?= $_spMeta['color'] ?>"></i><?= htmlspecialchars($_sp['name']) ?>
+                    </a>
+                <?php else: ?>
+                    <a href="#" class="nav-link disabled text-body-secondary">
+                        <i class="bi <?= $_spMeta['icon'] ?> me-2"></i><?= htmlspecialchars($_sp['name']) ?>
+                        <span class="badge bg-secondary ms-auto small">bientôt</span>
+                    </a>
+                <?php endif; ?>
             </li>
+        <?php endforeach; ?>
+        </ul>
+
+        <hr>
+
+        <!-- Paramètres -->
+        <p class="text-uppercase text-body-secondary small fw-semibold px-1 mb-1">Paramètres</p>
+        <ul class="nav nav-pills flex-column mb-auto">
             <li class="nav-item">
-                <a href="#" class="nav-link disabled text-body-secondary">
-                    <i class="bi bi-hdd-network me-2"></i>NinjaOne
-                    <span class="badge bg-secondary ms-auto small">bientôt</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a href="#" class="nav-link disabled text-body-secondary">
-                    <i class="bi bi-cloud me-2"></i>Wasabi
-                    <span class="badge bg-secondary ms-auto small">bientôt</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a href="#" class="nav-link disabled text-body-secondary">
-                    <i class="bi bi-archive me-2"></i>Veeam
-                    <span class="badge bg-secondary ms-auto small">bientôt</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a href="#" class="nav-link disabled text-body-secondary">
-                    <i class="bi bi-server me-2"></i>Infomaniak
-                    <span class="badge bg-secondary ms-auto small">bientôt</span>
+                <a href="/settings/connections" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/settings') ? 'active' : '' ?>">
+                    <i class="bi bi-plug me-2"></i>Connexions
                 </a>
             </li>
         </ul>
@@ -465,7 +482,8 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
     }
 
     // Fonction globale — appelable depuis n'importe quelle page
-    window.openSyncModal = function () {
+    // connectionId (optionnel) : si fourni, sync uniquement cette connexion
+    window.openSyncModal = function (connectionId) {
         showRunning();
         bsModal.show();
 
@@ -473,7 +491,10 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
         if (badge) { badge.className = 'badge bg-primary'; badge.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.65em;height:.65em"></span>'; }
         if (btnHeader) btnHeader.disabled = true;
 
-        fetch('/eset/sync', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        const body = new FormData();
+        if (connectionId) body.append('connection_id', connectionId);
+
+        fetch('/eset/sync', { method: 'POST', body, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(r => r.json())
             .then(data => {
                 if (data.status === 'already_running') {

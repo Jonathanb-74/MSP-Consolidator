@@ -29,6 +29,7 @@ use App\Controllers\ClientController;
 use App\Controllers\TagController;
 use App\Controllers\LicenseController;
 use App\Controllers\MappingController;
+use App\Controllers\SettingsController;
 use App\Modules\Eset\EsetController;
 
 $router = new Router();
@@ -67,5 +68,10 @@ $router->post('/eset/sync',         [EsetController::class, 'sync']);
 $router->post('/eset/sync-cancel',  [EsetController::class, 'syncCancel']);
 $router->get('/eset/sync-status',   [EsetController::class, 'syncStatus']);
 $router->get('/eset/debug-license', [EsetController::class, 'debugLicense']);
+
+// Paramètres
+$router->get('/settings/connections',             [SettingsController::class, 'connections']);
+$router->post('/settings/connections/sync-config',[SettingsController::class, 'syncFromConfig']);
+$router->post('/settings/connections/rename',     [SettingsController::class, 'renameConnection']);
 
 $router->dispatch();
