@@ -3,6 +3,7 @@
 namespace App\Modules\NinjaOne;
 
 use App\Core\Database;
+use App\Core\NameNormalizer;
 use RuntimeException;
 use Throwable;
 
@@ -28,7 +29,7 @@ class NinjaOneSyncService
     private int               $connectionId;
     private int               $providerId;
 
-    private const NAME_SIMILARITY_THRESHOLD = 80;
+    private const NAME_SIMILARITY_THRESHOLD = 65;
 
     private const NODE_CLASS_GROUPS = [
         'RMM' => [
@@ -214,11 +215,17 @@ class NinjaOneSyncService
 
         // Agréger en mémoire : orgId → ['RMM' => N, 'VMM' => N, ...]
         $counts = [];
+        $now    = date('Y-m-d H:i:s');
+
+        // Délai entre appels individuels (50ms) pour respecter le rate limit
+        $detailSleepUs = 50_000;
+
         foreach ($devices as $device) {
+            $deviceId = isset($device['id']) ? (int)$device['id'] : null;
             $orgId    = isset($device['organizationId']) ? (int)$device['organizationId'] : null;
             $rawClass = $device['nodeClass'] ?? null;
 
-            if (!$orgId || !$rawClass) {
+            if (!$orgId || !$rawClass || !$deviceId) {
                 continue;
             }
 
@@ -236,12 +243,71 @@ class NinjaOneSyncService
                     'CLOUD_MONITORING' => 0,
                 ];
             }
-
             $counts[$orgId][$group]++;
+
+            // Récupérer les détails complets pour manufacturer, model, lastLoggedInUser
+            usleep($detailSleepUs);
+            $detail = $this->api->getDeviceDetail($deviceId);
+
+            // UPSERT dans ninjaone_devices
+            $displayName    = $device['displayName'] ?? $device['systemName'] ?? $device['dnsName'] ?? '';
+            $dnsName        = $device['dnsName'] ?? null;
+            $isOnline       = isset($device['offline']) ? ($device['offline'] ? 0 : 1) : 0;
+            $osName         = $device['os']['name'] ?? $detail['os']['name'] ?? null;
+            // Marque / modèle : dans l'objet 'system' du détail
+            $manufacturer   = $detail['system']['manufacturer'] ?? $detail['manufacturer'] ?? null;
+            $model          = $detail['system']['model']        ?? $detail['model']        ?? null;
+            $lastLoggedUser = $detail['lastLoggedInUser']       ?? null;
+
+            // lastContact : epoch secondes ou millisecondes
+            $lastContact = null;
+            if (!empty($device['lastContact'])) {
+                $ts = (int)$device['lastContact'];
+                if ($ts > 1_000_000_000_000) {
+                    $ts = intdiv($ts, 1000); // millisecondes → secondes
+                }
+                $lastContact = date('Y-m-d H:i:s', $ts);
+            }
+
+            $this->db->execute(
+                "INSERT INTO ninjaone_devices
+                    (connection_id, ninjaone_device_id, ninjaone_org_id, display_name, dns_name,
+                     node_class, node_group, last_contact, is_online, os_name,
+                     manufacturer, model, last_logged_user, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                    ninjaone_org_id  = VALUES(ninjaone_org_id),
+                    display_name     = VALUES(display_name),
+                    dns_name         = VALUES(dns_name),
+                    node_class       = VALUES(node_class),
+                    node_group       = VALUES(node_group),
+                    last_contact     = VALUES(last_contact),
+                    is_online        = VALUES(is_online),
+                    os_name          = VALUES(os_name),
+                    manufacturer     = VALUES(manufacturer),
+                    model            = VALUES(model),
+                    last_logged_user = VALUES(last_logged_user),
+                    updated_at       = VALUES(updated_at)",
+                [
+                    $this->connectionId,
+                    $deviceId,
+                    $orgId,
+                    $displayName,
+                    $dnsName,
+                    $rawClass,
+                    $group,
+                    $lastContact,
+                    $isOnline,
+                    $osName,
+                    $manufacturer,
+                    $model,
+                    $lastLoggedUser,
+                    $now,
+                ]
+            );
         }
 
         // Mettre à jour les organisations en DB
-        $now = date('Y-m-d H:i:s');
         foreach ($counts as $orgId => $groupCounts) {
             $this->db->execute(
                 "UPDATE ninjaone_organizations
@@ -304,8 +370,8 @@ class NinjaOneSyncService
 
         foreach ($allClients as $client) {
             similar_text(
-                mb_strtolower(trim($orgName)),
-                mb_strtolower(trim($client['name'])),
+                NameNormalizer::normalize($orgName),
+                NameNormalizer::normalize($client['name']),
                 $percent
             );
             if ($percent > $bestScore) {

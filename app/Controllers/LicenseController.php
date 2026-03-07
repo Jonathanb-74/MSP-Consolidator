@@ -41,21 +41,22 @@ class LicenseController extends Controller
         ];
         $orderCol = $allowedSorts[$sortBy] ?? 'c.name';
 
-        // HAVING : filtre par présence de licences fournisseur
-        $havingSql = match($providerFilter) {
-            'eset'     => 'HAVING eset_lic_count > 0',
-            'becloud'  => 'HAVING bc_sub_count > 0',
-            'ninjaone' => 'HAVING (ninja_rmm + ninja_nms + ninja_mdm) > 0',
-            default    => '',
-        };
+        // Pour becloud/ninjaone : filtre via INNER JOIN plutôt que HAVING (HAVING sur tables dérivées
+        // échoue avec ONLY_FULL_GROUP_BY). Pour eset : agrégat COUNT() = OK en HAVING.
+        $bcJoinType       = ($providerFilter === 'becloud')  ? 'JOIN' : 'LEFT JOIN';
+        $ninjaJoinType    = ($providerFilter === 'ninjaone') ? 'JOIN' : 'LEFT JOIN';
+        $ninjaInnerHaving = ($providerFilter === 'ninjaone')
+            ? 'HAVING (SUM(no2.rmm_count) + SUM(no2.nms_count) + SUM(no2.mdm_count)) > 0'
+            : '';
+        $havingSql = ($providerFilter === 'eset') ? 'HAVING COUNT(DISTINCT el.id) > 0' : '';
 
         [$whereSql, $whereParams] = $this->buildWhere($search, $tagId);
 
-        // Count : sous-requête pour appliquer le HAVING si nécessaire
-        if ($havingSql) {
+        // Count : requête dédiée par fournisseur (évite les colonnes inconnues en HAVING)
+        if ($providerFilter === 'eset') {
             $total = $this->db->count(
                 "SELECT COUNT(*) FROM (
-                    SELECT c.id, COUNT(DISTINCT el.id) AS eset_lic_count
+                    SELECT c.id
                     FROM clients c
                     LEFT JOIN client_tags ct ON ct.client_id = c.id
                     LEFT JOIN client_provider_mappings cpm
@@ -66,7 +67,41 @@ class LicenseController extends Controller
                     LEFT JOIN eset_licenses el  ON el.eset_company_id = ec.eset_company_id
                     $whereSql
                     GROUP BY c.id
-                    $havingSql
+                    HAVING COUNT(DISTINCT el.id) > 0
+                ) sub",
+                $whereParams
+            );
+        } elseif ($providerFilter === 'becloud') {
+            $total = $this->db->count(
+                "SELECT COUNT(*) FROM (
+                    SELECT c.id
+                    FROM clients c
+                    LEFT JOIN client_tags ct ON ct.client_id = c.id
+                    JOIN client_provider_mappings cpm2
+                        ON cpm2.client_id = c.id AND cpm2.is_confirmed = 1
+                    JOIN be_cloud_customers bcc
+                        ON bcc.be_cloud_customer_id = cpm2.provider_client_id
+                        AND bcc.connection_id = cpm2.connection_id
+                    JOIN be_cloud_subscriptions bs ON bs.be_cloud_customer_id = bcc.be_cloud_customer_id
+                    $whereSql
+                    GROUP BY c.id
+                ) sub",
+                $whereParams
+            );
+        } elseif ($providerFilter === 'ninjaone') {
+            $total = $this->db->count(
+                "SELECT COUNT(*) FROM (
+                    SELECT c.id
+                    FROM clients c
+                    LEFT JOIN client_tags ct ON ct.client_id = c.id
+                    JOIN client_provider_mappings cpm3
+                        ON cpm3.client_id = c.id AND cpm3.is_confirmed = 1
+                    JOIN ninjaone_organizations no2
+                        ON CAST(no2.ninjaone_org_id AS CHAR) COLLATE utf8mb4_general_ci = cpm3.provider_client_id
+                        AND no2.connection_id = cpm3.connection_id
+                        AND (no2.rmm_count + no2.nms_count + no2.mdm_count) > 0
+                    $whereSql
+                    GROUP BY c.id
                 ) sub",
                 $whereParams
             );
@@ -109,7 +144,7 @@ class LicenseController extends Controller
                 AND cpm.is_confirmed = 1
              LEFT JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
              LEFT JOIN eset_licenses el  ON el.eset_company_id = ec.eset_company_id
-             LEFT JOIN (
+             $bcJoinType (
                 SELECT cpm2.client_id,
                        COUNT(DISTINCT bs.id)       AS bc_sub_count,
                        SUM(bs.quantity)             AS bc_seats_total,
@@ -122,7 +157,7 @@ class LicenseController extends Controller
                      AND cpm2.is_confirmed = 1
                 GROUP BY cpm2.client_id
              ) bc_agg ON bc_agg.client_id = c.id
-             LEFT JOIN (
+             $ninjaJoinType (
                 SELECT cpm3.client_id,
                        SUM(no2.rmm_count)   AS ninja_rmm,
                        SUM(no2.nms_count)   AS ninja_nms,
@@ -135,6 +170,7 @@ class LicenseController extends Controller
                      AND cpm3.connection_id = no2.connection_id
                      AND cpm3.is_confirmed = 1
                 GROUP BY cpm3.client_id
+                $ninjaInnerHaving
              ) ninja_agg ON ninja_agg.client_id = c.id
              $whereSql
              GROUP BY c.id

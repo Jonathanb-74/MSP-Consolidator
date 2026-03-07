@@ -102,8 +102,18 @@
         <p class="text-uppercase text-body-secondary small fw-semibold px-1 mb-1">Paramètres</p>
         <ul class="nav nav-pills flex-column mb-auto">
             <li class="nav-item">
-                <a href="/settings/connections" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/settings') ? 'active' : '' ?>">
+                <a href="/settings/connections" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/settings/connections') ? 'active' : '' ?>">
                     <i class="bi bi-plug me-2"></i>Connexions
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="/settings/normalisation" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/settings/normalisation') ? 'active' : '' ?>">
+                    <i class="bi bi-scissors me-2"></i>Normalisation
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="/settings/general" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/settings/general') ? 'active' : '' ?>">
+                    <i class="bi bi-sliders me-2"></i>Général
                 </a>
             </li>
         </ul>
@@ -140,26 +150,7 @@
             </nav>
 
             <div class="d-flex align-items-center gap-3">
-                <!-- Bouton infos techniques -->
-                <button class="btn btn-xs btn-outline-secondary py-0 px-1"
-                        data-bs-toggle="modal" data-bs-target="#techInfoModal"
-                        title="Infos techniques"
-                        style="font-size:.75rem;line-height:1.6">
-                    <i class="bi bi-gear"></i>
-                </button>
-
-                <!-- Indicateur sync ESET -->
-                <div class="d-flex align-items-center gap-2 small" id="syncIndicator">
-                    <span class="text-body-secondary"><i class="bi bi-shield-lock text-success me-1"></i>ESET</span>
-                    <span id="syncStatusBadge" class="badge bg-secondary">
-                        <span class="spinner-border spinner-border-sm" style="width:.6em;height:.6em"></span>
-                    </span>
-                    <a href="/eset/sync-logs" class="text-body-secondary" title="Voir les logs de sync" style="font-size:.8rem">
-                        <i class="bi bi-clock-history"></i>
-                    </a>
-                </div>
-
-                <span class="small text-body-secondary border-start ps-3">
+                <span class="small text-body-secondary">
                     <?= date('d/m/Y H:i') ?>
                 </span>
             </div>
@@ -197,125 +188,6 @@
     <!-- ── /Contenu principal ─────────────────────────────────── -->
 </div>
 
-<!-- Modal Infos Techniques -->
-<?php
-$maxExec    = (int)ini_get('max_execution_time');
-$maxInput   = (int)ini_get('max_input_time');
-$memLimit   = ini_get('memory_limit');
-$uploadMax  = ini_get('upload_max_filesize');
-$postMax    = ini_get('post_max_size');
-$sapi       = PHP_SAPI;
-$phpVersion = PHP_VERSION;
-$serverSw   = $_SERVER['SERVER_SOFTWARE'] ?? '—';
-$htaccessOk = $maxExec === 0 || $maxExec > 30;
-?>
-<div class="modal fade" id="techInfoModal" tabindex="-1" aria-labelledby="techInfoModalTitle" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="techInfoModalTitle">
-                    <i class="bi bi-gear me-2"></i>Informations techniques
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-
-                <!-- .htaccess status -->
-                <div class="alert alert-<?= $htaccessOk ? 'success' : 'warning' ?> d-flex align-items-center gap-2 py-2">
-                    <i class="bi bi-<?= $htaccessOk ? 'check-circle-fill' : 'exclamation-triangle-fill' ?>"></i>
-                    <?php if ($htaccessOk): ?>
-                        <span><strong>.htaccess pris en compte</strong> — <code>max_execution_time</code> = <?= $maxExec === 0 ? '0 (illimité)' : $maxExec . 's' ?></span>
-                    <?php else: ?>
-                        <span><strong>.htaccess ignoré ou non appliqué</strong> — <code>max_execution_time</code> = <?= $maxExec ?>s (valeur par défaut php.ini). La sync risque d'être interrompue.</span>
-                    <?php endif; ?>
-                </div>
-
-                <!-- PHP Config -->
-                <h6 class="text-body-secondary text-uppercase small fw-semibold mb-2">Configuration PHP</h6>
-                <table class="table table-sm table-bordered small mb-3">
-                    <tbody>
-                        <tr>
-                            <td class="text-body-secondary" style="width:55%">PHP Version</td>
-                            <td><code><?= htmlspecialchars($phpVersion) ?></code></td>
-                        </tr>
-                        <tr>
-                            <td class="text-body-secondary">SAPI</td>
-                            <td><code><?= htmlspecialchars($sapi) ?></code>
-                                <?php if ($sapi === 'apache2handler'): ?>
-                                    <span class="badge bg-success ms-1">Apache mod_php</span>
-                                <?php elseif (str_contains($sapi, 'fpm')): ?>
-                                    <span class="badge bg-info ms-1">PHP-FPM</span>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <tr class="<?= !$htaccessOk ? 'table-warning' : '' ?>">
-                            <td class="text-body-secondary">max_execution_time</td>
-                            <td>
-                                <code><?= $maxExec === 0 ? '0 (illimité)' : $maxExec . 's' ?></code>
-                                <?php if (!$htaccessOk): ?>
-                                    <span class="badge bg-warning text-dark ms-1">Trop court pour la sync</span>
-                                <?php else: ?>
-                                    <span class="badge bg-success ms-1">OK</span>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td class="text-body-secondary">max_input_time</td>
-                            <td><code><?= $maxInput === -1 ? '-1 (illimité)' : $maxInput . 's' ?></code></td>
-                        </tr>
-                        <tr>
-                            <td class="text-body-secondary">memory_limit</td>
-                            <td><code><?= htmlspecialchars($memLimit) ?></code></td>
-                        </tr>
-                        <tr>
-                            <td class="text-body-secondary">upload_max_filesize</td>
-                            <td><code><?= htmlspecialchars($uploadMax) ?></code></td>
-                        </tr>
-                        <tr>
-                            <td class="text-body-secondary">post_max_size</td>
-                            <td><code><?= htmlspecialchars($postMax) ?></code></td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <!-- Serveur -->
-                <h6 class="text-body-secondary text-uppercase small fw-semibold mb-2">Serveur</h6>
-                <table class="table table-sm table-bordered small mb-0">
-                    <tbody>
-                        <tr>
-                            <td class="text-body-secondary" style="width:55%">Software</td>
-                            <td><code><?= htmlspecialchars($serverSw) ?></code></td>
-                        </tr>
-                        <tr>
-                            <td class="text-body-secondary">Document root</td>
-                            <td><code><?= htmlspecialchars($_SERVER['DOCUMENT_ROOT'] ?? '—') ?></code></td>
-                        </tr>
-                        <tr>
-                            <td class="text-body-secondary">APP_ROOT</td>
-                            <td><code><?= htmlspecialchars(defined('APP_ROOT') ? APP_ROOT : '—') ?></code></td>
-                        </tr>
-                        <tr>
-                            <td class="text-body-secondary">Heure serveur</td>
-                            <td><code><?= date('Y-m-d H:i:s T') ?></code></td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <?php if ($sapi !== 'apache2handler'): ?>
-                <div class="alert alert-info mt-3 mb-0 small">
-                    <i class="bi bi-info-circle me-1"></i>
-                    SAPI = <strong><?= htmlspecialchars($sapi) ?></strong> — les directives <code>php_value</code> dans <code>.htaccess</code> ne fonctionnent qu'avec <code>mod_php</code> (apache2handler). Avec PHP-FPM, configure <code>max_execution_time</code> dans <code>php.ini</code> ou le pool FPM.
-                </div>
-                <?php endif; ?>
-
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Modal Synchronisation ESET -->
 <div class="modal fade" id="syncModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="syncModalTitle" aria-hidden="true">
     <div class="modal-dialog">
@@ -346,10 +218,8 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
 <script src="/assets/js/app.js"></script>
 
 <script>
-// ── Sync ESET : badge + modal ───────────────────────────────────────────────
+// ── Sync modal (générique : ESET, BeCloud, NinjaOne) ────────────────────────
 (function () {
-    const badge      = document.getElementById('syncStatusBadge');
-    const btnHeader  = document.getElementById('btnSyncNow');
     const modalEl    = document.getElementById('syncModal');
     const modalBody  = document.getElementById('syncModalBody');
     const modalClose = document.getElementById('syncModalClose');
@@ -359,42 +229,6 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
 
     function esc(s) {
         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
-    function relativeTime(dateStr) {
-        if (!dateStr) return '—';
-        const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-        if (diff < 60)    return "à l'instant";
-        if (diff < 3600)  return `il y a ${Math.floor(diff / 60)} min`;
-        if (diff < 86400) return `il y a ${Math.floor(diff / 3600)}h`;
-        return `il y a ${Math.floor(diff / 86400)}j`;
-    }
-
-    function updateBadge(data) {
-        const { running, last } = data;
-        if (running) {
-            badge.className = 'badge bg-primary';
-            badge.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.65em;height:.65em"></span>';
-            if (btnHeader) btnHeader.disabled = true;
-        } else if (!last) {
-            badge.className = 'badge bg-secondary';
-            badge.innerHTML = '<i class="bi bi-dash me-1"></i>Jamais';
-            if (btnHeader) btnHeader.disabled = false;
-        } else if (last.status === 'success') {
-            badge.className = 'badge bg-success';
-            badge.innerHTML = '<i class="bi bi-check-circle me-1"></i>' + relativeTime(last.finished_at);
-            badge.title = `${last.finished_at} — ${last.records_fetched} entrées`;
-            if (btnHeader) btnHeader.disabled = false;
-        } else if (last.status === 'error') {
-            badge.className = 'badge bg-danger';
-            badge.innerHTML = '<i class="bi bi-x-circle me-1"></i>Erreur';
-            badge.title = last.error_message || 'Erreur';
-            if (btnHeader) btnHeader.disabled = false;
-        } else {
-            badge.className = 'badge bg-secondary';
-            badge.innerHTML = esc(last.status);
-            if (btnHeader) btnHeader.disabled = false;
-        }
     }
 
     function showRunning(providerCode) {
@@ -531,12 +365,6 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
         showRunning(providerCode);
         bsModal.show();
 
-        // Mise à jour du badge en mode "chargement" (uniquement pour ESET dans le header)
-        if (providerCode === 'eset') {
-            if (badge) { badge.className = 'badge bg-primary'; badge.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.65em;height:.65em"></span>'; }
-            if (btnHeader) btnHeader.disabled = true;
-        }
-
         const body = new FormData();
         if (connectionId) body.append('connection_id', connectionId);
 
@@ -548,29 +376,16 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
                 } else {
                     showResult(data, providerCode);
                 }
-                // Rafraîchir le badge ESET si c'était une sync ESET
-                if (providerCode === 'eset') {
-                    fetch('/eset/sync-status').then(r => r.json()).then(updateBadge).catch(() => {});
-                }
             })
             .catch(err => {
                 showError('Erreur réseau : ' + (err.message || err));
-                if (providerCode === 'eset') {
-                    fetch('/eset/sync-status').then(r => r.json()).then(updateBadge).catch(() => {});
-                }
             });
     };
-
-    // Bouton header
-    btnHeader?.addEventListener('click', window.openSyncModal);
 
     // Fermeture de la modal → rechargement si sync réussie
     modalEl?.addEventListener('hidden.bs.modal', () => {
         if (syncDone) location.reload();
     });
-
-    // Badge initial
-    fetch('/eset/sync-status').then(r => r.json()).then(updateBadge).catch(() => {});
 })();
 </script>
 </body>

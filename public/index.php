@@ -59,6 +59,7 @@ $router->get('/licenses', [LicenseController::class, 'index']);
 // Mapping fournisseur ↔ client
 $router->get('/mapping',                [MappingController::class, 'index']);
 $router->post('/mapping/link',          [MappingController::class, 'link']);
+$router->post('/mapping/link-bulk',     [MappingController::class, 'linkBulk']);
 $router->post('/mapping/unlink',        [MappingController::class, 'unlink']);
 $router->post('/mapping/confirm-bulk',  [MappingController::class, 'confirmBulk']);
 $router->post('/mapping/auto-confirm',  [MappingController::class, 'autoConfirm']);
@@ -80,14 +81,23 @@ $router->get('/becloud/sync-status',  [BeCloudController::class, 'syncStatus']);
 
 // NinjaOne
 $router->get('/ninjaone/licenses',     [NinjaOneController::class, 'licenses']);
+$router->get('/ninjaone/devices',      [NinjaOneController::class, 'devices']);
 $router->get('/ninjaone/sync-logs',    [NinjaOneController::class, 'syncLogs']);
 $router->post('/ninjaone/sync',        [NinjaOneController::class, 'sync']);
 $router->post('/ninjaone/sync-cancel', [NinjaOneController::class, 'syncCancel']);
 $router->get('/ninjaone/sync-status',  [NinjaOneController::class, 'syncStatus']);
 
 // Paramètres
-$router->get('/settings/connections',             [SettingsController::class, 'connections']);
-$router->post('/settings/connections/sync-config',[SettingsController::class, 'syncFromConfig']);
-$router->post('/settings/connections/rename',     [SettingsController::class, 'renameConnection']);
+$router->get('/settings/connections',                  [SettingsController::class, 'connections']);
+$router->post('/settings/connections/sync-config',     [SettingsController::class, 'syncFromConfig']);
+$router->post('/settings/connections/rename',          [SettingsController::class, 'renameConnection']);
+
+$router->get('/settings/normalisation',                [SettingsController::class, 'normalisation']);
+$router->post('/settings/normalisation/store',         [SettingsController::class, 'normalisationStore']);
+$router->post('/settings/normalisation/toggle',        [SettingsController::class, 'normalisationToggle']);
+$router->post('/settings/normalisation/delete',        [SettingsController::class, 'normalisationDelete']);
+
+$router->get('/settings/general',                      [SettingsController::class, 'general']);
+$router->post('/settings/general/update',              [SettingsController::class, 'generalUpdate']);
 
 $router->dispatch();

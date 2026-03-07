@@ -125,6 +125,23 @@ class NinjaOneApiClient extends ApiClient
         return $all;
     }
 
+    // ── Équipement (détail) ─────────────────────────────────────────
+
+    /**
+     * Récupère les détails complets d'un équipement (manufacturer, model, lastLoggedInUser…).
+     * L'endpoint /v2/device/{id} retourne des champs absents du bulk /v2/devices.
+     *
+     * @return array Données de l'équipement, ou [] si introuvable
+     */
+    public function getDeviceDetail(int $id): array
+    {
+        try {
+            return $this->getAuthenticated('/v2/device/' . $id);
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
     // ── Interne ─────────────────────────────────────────────────────
 
     /**

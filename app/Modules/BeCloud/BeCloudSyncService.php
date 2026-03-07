@@ -3,6 +3,7 @@
 namespace App\Modules\BeCloud;
 
 use App\Core\Database;
+use App\Core\NameNormalizer;
 use Throwable;
 
 /**
@@ -21,7 +22,7 @@ class BeCloudSyncService
     private int $connectionId;
 
     // Seuil similarité nom pour auto-mapping (0-100)
-    private const NAME_SIMILARITY_THRESHOLD = 80;
+    private const NAME_SIMILARITY_THRESHOLD = 65;
 
     public function __construct(Database $db, BeCloudApiClient $api, int $connectionId)
     {
@@ -314,8 +315,8 @@ class BeCloudSyncService
 
         foreach ($allClients as $client) {
             similar_text(
-                mb_strtolower($customerName),
-                mb_strtolower($client['name']),
+                NameNormalizer::normalize($customerName),
+                NameNormalizer::normalize($client['name']),
                 $percent
             );
             if ($percent > $bestScore) {

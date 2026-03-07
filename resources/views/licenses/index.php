@@ -331,8 +331,8 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                                         <span class="badge bg-secondary" title="no license"><?= $ninjaCloud ?> Cloud</span>
                                         <?php endif; ?>
                                     </div>
-                                    <a href="/ninjaone/licenses?search=<?= urlencode($client['name']) ?>" class="small">
-                                        Voir les équipements
+                                    <a href="/ninjaone/devices?client_id=<?= $client['id'] ?>" class="small">
+                                        <i class="bi bi-hdd-network me-1"></i>Voir les équipements
                                     </a>
                                 <?php else: ?>
                                     <p class="text-body-secondary small mb-0">

@@ -121,6 +121,109 @@ class NinjaOneController extends Controller
     }
 
     /**
+     * GET /ninjaone/devices — Équipements NinjaOne d'un client
+     */
+    public function devices(array $params = []): void
+    {
+        $clientId = (int)($_GET['client_id'] ?? 0);
+        $search   = trim($_GET['search'] ?? '');
+        $group    = $_GET['group'] ?? '';
+        $sortBy   = $_GET['sort'] ?? 'name';
+        $sortDir  = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
+
+        $allowedSorts = [
+            'name'    => 'nd.display_name',
+            'org'     => 'no.name',
+            'type'    => 'nd.node_class',
+            'group'   => 'nd.node_group',
+            'os'      => 'nd.os_name',
+            'brand'   => 'nd.manufacturer',
+            'user'    => 'nd.last_logged_user',
+            'contact' => 'nd.last_contact',
+            'online'  => 'nd.is_online',
+        ];
+        $orderCol = $allowedSorts[$sortBy] ?? 'nd.display_name';
+
+        $client = null;
+        if ($clientId > 0) {
+            $client = $this->db->fetchOne("SELECT id, name FROM clients WHERE id = ? LIMIT 1", [$clientId]);
+        }
+
+        $conditions = [
+            "cpm.is_confirmed = 1",
+        ];
+        $params = [];
+
+        if ($clientId > 0) {
+            $conditions[] = "cpm.client_id = ?";
+            $params[]     = $clientId;
+        }
+
+        if ($search !== '') {
+            $conditions[] = "(nd.display_name LIKE ? OR nd.dns_name LIKE ? OR no.name LIKE ?)";
+            $like = '%' . $search . '%';
+            $params = array_merge($params, [$like, $like, $like]);
+        }
+
+        if ($group !== '') {
+            $conditions[] = "nd.node_group = ?";
+            $params[]     = $group;
+        }
+
+        $whereSql = 'WHERE ' . implode(' AND ', $conditions);
+
+        $total = $this->db->count(
+            "SELECT COUNT(*)
+             FROM ninjaone_devices nd
+             JOIN ninjaone_organizations no
+                  ON no.ninjaone_org_id = nd.ninjaone_org_id AND no.connection_id = nd.connection_id
+             JOIN client_provider_mappings cpm
+                  ON cpm.provider_client_id = CAST(nd.ninjaone_org_id AS CHAR) COLLATE utf8mb4_general_ci
+                  AND cpm.connection_id = nd.connection_id
+             $whereSql",
+            $params
+        );
+
+        $page    = max(1, (int)($_GET['page'] ?? 1));
+        $_pp     = (int)($_GET['perPage'] ?? 100);
+        $perPage = in_array($_pp, [50, 100, 250, 500]) ? $_pp : 100;
+        $offset  = ($page - 1) * $perPage;
+
+        $devices = $this->db->fetchAll(
+            "SELECT nd.*,
+                    no.name AS org_name,
+                    c.id    AS client_id,
+                    c.name  AS client_name
+             FROM ninjaone_devices nd
+             JOIN ninjaone_organizations no
+                  ON no.ninjaone_org_id = nd.ninjaone_org_id AND no.connection_id = nd.connection_id
+             JOIN client_provider_mappings cpm
+                  ON cpm.provider_client_id = CAST(nd.ninjaone_org_id AS CHAR) COLLATE utf8mb4_general_ci
+                  AND cpm.connection_id = nd.connection_id
+             JOIN clients c ON c.id = cpm.client_id
+             $whereSql
+             ORDER BY $orderCol $sortDir
+             LIMIT $perPage OFFSET $offset",
+            $params
+        );
+
+        $this->render('ninjaone/devices', [
+            'pageTitle' => 'Équipements NinjaOne' . ($client ? ' — ' . $client['name'] : ''),
+            'breadcrumbs' => ['Dashboard' => '/', 'NinjaOne' => '/ninjaone/licenses', 'Équipements' => null],
+            'devices'   => $devices,
+            'client'    => $client,
+            'total'     => $total,
+            'page'      => $page,
+            'perPage'   => $perPage,
+            'search'    => $search,
+            'group'     => $group,
+            'sortBy'    => $sortBy,
+            'sortDir'   => $sortDir,
+            'clientId'  => $clientId,
+        ]);
+    }
+
+    /**
      * GET /ninjaone/sync-logs — Historique des synchronisations
      */
     public function syncLogs(array $params = []): void

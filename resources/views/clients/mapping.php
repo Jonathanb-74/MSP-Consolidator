@@ -70,10 +70,16 @@ $isUnmappedTab = ($confirmed === '0');
     </div>
 
     <?php if ($isUnmappedTab): ?>
-    <button class="btn btn-sm btn-outline-primary" type="button"
-            data-bs-toggle="collapse" data-bs-target="#autoConfirmPanel">
-        <i class="bi bi-magic me-1"></i>Auto-confirmer
-    </button>
+    <div class="d-flex gap-2">
+        <button id="btnSaveAll" class="btn btn-sm btn-primary d-none">
+            <i class="bi bi-check-all me-1"></i>Sauvegarder tout
+            <span id="saveAllCount" class="badge bg-light text-dark ms-1">0</span>
+        </button>
+        <button class="btn btn-sm btn-outline-primary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#autoConfirmPanel">
+            <i class="bi bi-magic me-1"></i>Auto-confirmer
+        </button>
+    </div>
     <?php endif; ?>
 </div>
 
@@ -275,6 +281,43 @@ const CLIENTS_DATA = <?= json_encode(array_map(fn($c) => [
     'search' => strtolower($c['name'] . ' ' . ($c['client_number'] ?? '')),
 ], $clients), JSON_UNESCAPED_UNICODE) ?>;
 
+// ── Suivi des changements en attente ─────────────────────────────────────────
+const pendingChanges = new Map(); // provider_client_id → {client_id, provider_client_id}
+const btnSaveAll     = document.getElementById('btnSaveAll');
+const saveAllCount   = document.getElementById('saveAllCount');
+
+function updateSaveAll() {
+    if (!btnSaveAll) return;
+    const n = pendingChanges.size;
+    btnSaveAll.classList.toggle('d-none', n === 0);
+    if (saveAllCount) saveAllCount.textContent = n;
+}
+
+btnSaveAll?.addEventListener('click', function() {
+    const mappings = [...pendingChanges.values()];
+    if (!mappings.length) return;
+    if (!confirm(`Sauvegarder ${mappings.length} mapping(s) ?`)) return;
+
+    this.disabled = true;
+    this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sauvegarde…';
+
+    const fd = new FormData();
+    fd.append('provider', '<?= htmlspecialchars($provider) ?>');
+    fd.append('mappings', JSON.stringify(mappings));
+
+    fetch('/mapping/link-bulk', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) location.reload();
+            else {
+                alert('❌ ' + d.message);
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-check-all me-1"></i>Sauvegarder tout <span id="saveAllCount" class="badge bg-light text-dark ms-1">' + mappings.length + '</span>';
+            }
+        })
+        .catch(() => { alert('❌ Erreur réseau'); this.disabled = false; });
+});
+
 // ── Autocomplete ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.client-autocomplete').forEach(function(ac) {
     const input    = ac.querySelector('.client-search-input');
@@ -299,7 +342,15 @@ document.querySelectorAll('.client-autocomplete').forEach(function(ac) {
                 input.value  = c.label;
                 hidden.value = c.id;
                 dropdown.classList.add('d-none');
-                saveBtn.disabled = String(c.id) === String(hidden.dataset.original);
+                const isDirty = String(c.id) !== String(hidden.dataset.original);
+                saveBtn.disabled = !isDirty;
+                const key = row.dataset.providerClientId;
+                if (isDirty) {
+                    pendingChanges.set(key, { client_id: c.id, provider_client_id: key });
+                } else {
+                    pendingChanges.delete(key);
+                }
+                updateSaveAll();
             });
             dropdown.appendChild(btn);
         });
@@ -344,8 +395,10 @@ document.querySelectorAll('.client-autocomplete').forEach(function(ac) {
         fetch('/mapping/link', { method: 'POST', body: fd })
             .then(r => r.json())
             .then(d => {
-                if (d.success) location.reload();
-                else {
+                if (d.success) {
+                    pendingChanges.delete(row.dataset.providerClientId);
+                    location.reload();
+                } else {
                     alert('❌ ' + d.message);
                     this.disabled = false;
                     this.innerHTML = '<i class="bi bi-check-lg"></i>';

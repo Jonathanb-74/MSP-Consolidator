@@ -3,6 +3,7 @@
 namespace App\Modules\Eset;
 
 use App\Core\Database;
+use App\Core\NameNormalizer;
 use Throwable;
 
 /**
@@ -21,7 +22,7 @@ class EsetSyncService
     private int $connectionId;
 
     // Seuil similarité nom pour auto-mapping (0-100)
-    private const NAME_SIMILARITY_THRESHOLD = 80;
+    private const NAME_SIMILARITY_THRESHOLD = 65;
 
     // Heures avant re-fetch du détail pour une licence stable (sync incrémentale)
     private const DETAIL_REFRESH_HOURS = 4;
@@ -376,8 +377,8 @@ class EsetSyncService
 
         foreach ($allClients as $client) {
             similar_text(
-                mb_strtolower($companyName),
-                mb_strtolower($client['name']),
+                NameNormalizer::normalize($companyName),
+                NameNormalizer::normalize($client['name']),
                 $percent
             );
             if ($percent > $bestScore) {

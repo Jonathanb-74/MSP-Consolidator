@@ -62,9 +62,10 @@ class MappingController extends Controller
         } else {
             $entityTable  = 'eset_companies ent';
             $entityIdExpr = 'ent.eset_company_id';
-            $connExpr     = 'NULL';
+            $connExpr     = 'ent.connection_id';
             $cpmJoin      = "LEFT JOIN client_provider_mappings cpm
                              ON cpm.provider_client_id = ent.eset_company_id
+                             AND cpm.connection_id = ent.connection_id
                              AND cpm.provider_id = $pid";
         }
 
@@ -161,52 +162,125 @@ class MappingController extends Controller
      */
     public function link(array $params = []): void
     {
-        $clientId         = (int)($_POST['client_id'] ?? 0);
-        $providerClientId = trim($_POST['provider_client_id'] ?? '');
-        $providerCode     = trim($_POST['provider'] ?? 'eset');
-        $notes            = trim($_POST['notes'] ?? '');
+        try {
+            $clientId         = (int)($_POST['client_id'] ?? 0);
+            $providerClientId = trim($_POST['provider_client_id'] ?? '');
+            $providerCode     = trim($_POST['provider'] ?? 'eset');
+            $notes            = trim($_POST['notes'] ?? '');
 
-        if (!$clientId || !$providerClientId) {
-            $this->json(['success' => false, 'message' => 'Données manquantes.'], 400);
-            return;
+            if (!$clientId || !$providerClientId) {
+                $this->json(['success' => false, 'message' => 'Données manquantes.'], 400);
+                return;
+            }
+
+            $provider = $this->db->fetchOne(
+                "SELECT id FROM providers WHERE code = ? LIMIT 1",
+                [$providerCode]
+            );
+
+            if (!is_array($provider)) {
+                $this->json(['success' => false, 'message' => 'Fournisseur inconnu.'], 400);
+                return;
+            }
+
+            [$companyName, $connectionId] = $this->resolveEntity($providerCode, $providerClientId);
+
+            $this->insertMapping(
+                (int)$provider['id'], $clientId, $connectionId,
+                $providerClientId, $companyName, $notes
+            );
+
+            $this->json(['success' => true, 'message' => 'Mapping enregistré.']);
+        } catch (\Throwable $e) {
+            $this->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
 
-        $provider = $this->db->fetchOne(
-            "SELECT id FROM providers WHERE code = ? LIMIT 1",
-            [$providerCode]
-        );
+    /**
+     * POST /mapping/link-bulk — Enregistrer plusieurs mappings en une fois
+     */
+    public function linkBulk(array $params = []): void
+    {
+        try {
+            $providerCode = trim($_POST['provider'] ?? 'eset');
+            $mappingsJson = trim($_POST['mappings'] ?? '');
+            $mappings     = json_decode($mappingsJson, true);
 
-        if (!$provider) {
-            $this->json(['success' => false, 'message' => 'Fournisseur inconnu.'], 400);
-            return;
+            if (!is_array($mappings) || empty($mappings)) {
+                $this->json(['success' => false, 'message' => 'Aucun mapping fourni.'], 400);
+                return;
+            }
+
+            $provider = $this->db->fetchOne(
+                "SELECT id FROM providers WHERE code = ? LIMIT 1",
+                [$providerCode]
+            );
+
+            if (!is_array($provider)) {
+                $this->json(['success' => false, 'message' => 'Fournisseur inconnu.'], 400);
+                return;
+            }
+
+            $count = 0;
+            foreach ($mappings as $m) {
+                $clientId         = (int)($m['client_id'] ?? 0);
+                $providerClientId = trim($m['provider_client_id'] ?? '');
+                if (!$clientId || !$providerClientId) continue;
+
+                [$companyName, $connectionId] = $this->resolveEntity($providerCode, $providerClientId);
+                $this->insertMapping(
+                    (int)$provider['id'], $clientId, $connectionId,
+                    $providerClientId, $companyName, ''
+                );
+                $count++;
+            }
+
+            $this->json(['success' => true, 'message' => "$count mapping(s) enregistré(s)."]);
+        } catch (\Throwable $e) {
+            $this->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
 
-        // Company name + connection_id selon le provider
-        $companyName  = null;
-        $connectionId = null;
-
+    /**
+     * Résout le nom + connection_id d'une entité selon le provider.
+     * @return array{0: ?string, 1: ?int}
+     */
+    private function resolveEntity(string $providerCode, string $providerClientId): array
+    {
         if ($providerCode === 'eset') {
-            $entity      = $this->db->fetchOne(
-                "SELECT name FROM eset_companies WHERE eset_company_id = ? LIMIT 1",
+            $row = $this->db->fetchOne(
+                "SELECT name, connection_id FROM eset_companies WHERE eset_company_id = ? LIMIT 1",
                 [$providerClientId]
             );
-            $companyName = $entity['name'] ?? null;
-        } elseif ($providerCode === 'becloud') {
-            $entity       = $this->db->fetchOne(
+            return is_array($row) ? [$row['name'], (int)$row['connection_id']] : [null, null];
+        }
+
+        if ($providerCode === 'becloud') {
+            $row = $this->db->fetchOne(
                 "SELECT name, connection_id FROM be_cloud_customers WHERE be_cloud_customer_id = ? LIMIT 1",
                 [$providerClientId]
             );
-            $companyName  = $entity['name'] ?? null;
-            $connectionId = $entity['connection_id'] ?? null;
-        } elseif ($providerCode === 'ninjaone') {
-            $entity       = $this->db->fetchOne(
+            return is_array($row) ? [$row['name'], (int)$row['connection_id']] : [null, null];
+        }
+
+        if ($providerCode === 'ninjaone') {
+            $row = $this->db->fetchOne(
                 "SELECT name, connection_id FROM ninjaone_organizations WHERE ninjaone_org_id = ? LIMIT 1",
                 [(int)$providerClientId]
             );
-            $companyName  = $entity['name'] ?? null;
-            $connectionId = $entity['connection_id'] ?? null;
+            return is_array($row) ? [$row['name'], (int)$row['connection_id']] : [null, null];
         }
 
+        return [null, null];
+    }
+
+    /**
+     * Insère ou met à jour un mapping dans client_provider_mappings.
+     */
+    private function insertMapping(
+        int $providerId, int $clientId, ?int $connectionId,
+        string $providerClientId, ?string $companyName, string $notes
+    ): void {
         $this->db->execute(
             "INSERT INTO client_provider_mappings
                 (client_id, provider_id, connection_id, provider_client_id, provider_client_name,
@@ -220,10 +294,8 @@ class MappingController extends Controller
                 is_confirmed         = 1,
                 notes                = VALUES(notes),
                 updated_at           = NOW()",
-            [$clientId, (int)$provider['id'], $connectionId, $providerClientId, $companyName, $notes ?: null]
+            [$clientId, $providerId, $connectionId, $providerClientId, $companyName, $notes ?: null]
         );
-
-        $this->json(['success' => true, 'message' => 'Mapping enregistré.']);
     }
 
     /**
