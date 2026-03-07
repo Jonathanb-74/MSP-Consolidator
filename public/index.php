@@ -32,6 +32,7 @@ use App\Controllers\MappingController;
 use App\Controllers\SettingsController;
 use App\Modules\Eset\EsetController;
 use App\Modules\BeCloud\BeCloudController;
+use App\Modules\NinjaOne\NinjaOneController;
 
 $router = new Router();
 
@@ -76,6 +77,13 @@ $router->get('/becloud/sync-logs',    [BeCloudController::class, 'syncLogs']);
 $router->post('/becloud/sync',        [BeCloudController::class, 'sync']);
 $router->post('/becloud/sync-cancel', [BeCloudController::class, 'syncCancel']);
 $router->get('/becloud/sync-status',  [BeCloudController::class, 'syncStatus']);
+
+// NinjaOne
+$router->get('/ninjaone/licenses',     [NinjaOneController::class, 'licenses']);
+$router->get('/ninjaone/sync-logs',    [NinjaOneController::class, 'syncLogs']);
+$router->post('/ninjaone/sync',        [NinjaOneController::class, 'sync']);
+$router->post('/ninjaone/sync-cancel', [NinjaOneController::class, 'syncCancel']);
+$router->get('/ninjaone/sync-status',  [NinjaOneController::class, 'syncStatus']);
 
 // Paramètres
 $router->get('/settings/connections',             [SettingsController::class, 'connections']);

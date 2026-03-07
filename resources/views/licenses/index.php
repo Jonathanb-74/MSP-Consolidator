@@ -61,8 +61,9 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
     <div class="col-md-3">
         <select name="provider" class="form-select form-select-sm">
             <option value="" <?= $providerFilter === '' ? 'selected' : '' ?>>Tous les clients</option>
-            <option value="eset"    <?= $providerFilter === 'eset'    ? 'selected' : '' ?>>Avec licences ESET</option>
-            <option value="becloud" <?= $providerFilter === 'becloud' ? 'selected' : '' ?>>Avec abonnements Be-Cloud</option>
+            <option value="eset"     <?= $providerFilter === 'eset'     ? 'selected' : '' ?>>Avec licences ESET</option>
+            <option value="becloud"  <?= $providerFilter === 'becloud'  ? 'selected' : '' ?>>Avec abonnements Be-Cloud</option>
+            <option value="ninjaone" <?= $providerFilter === 'ninjaone' ? 'selected' : '' ?>>Avec équipements NinjaOne</option>
         </select>
     </div>
     <div class="col-auto">
@@ -91,10 +92,9 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                     <i class="bi bi-cloud-check me-1 text-info"></i>
                     <?= licSortLink('bc_count', $sortBy, $sortDir, 'Be-Cloud', $qp) ?>
                 </th>
-                <th class="text-body-secondary">
-                    <i class="bi bi-hdd-network me-1 opacity-50"></i>
-                    <span class="opacity-50">NinjaOne</span>
-                    <span class="badge bg-secondary ms-1" style="font-size:.65rem">bientôt</span>
+                <th>
+                    <i class="bi bi-hdd-network me-1 text-warning"></i>
+                    <?= licSortLink('ninja_rmm', $sortBy, $sortDir, 'NinjaOne', $qp) ?>
                 </th>
                 <th class="text-body-secondary">
                     <i class="bi bi-archive me-1 opacity-50"></i>
@@ -106,7 +106,7 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
         <tbody>
             <?php if (empty($clients)): ?>
             <tr>
-                <td colspan="8" class="text-center text-body-secondary py-5">
+                <td colspan="9" class="text-center text-body-secondary py-5">
                     <i class="bi bi-grid-3x3 fs-1 d-block mb-2 opacity-25"></i>
                     Aucun client trouvé.
                 </td>
@@ -124,6 +124,12 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                 $bcTotal     = (int)($client['bc_seats_total'] ?? 0);
                 $bcUsed      = (int)($client['bc_seats_used'] ?? 0);
                 $bcOver      = $bcTotal > 0 && $bcUsed > $bcTotal;
+                $ninjaRmm    = (int)($client['ninja_rmm']   ?? 0);
+                $ninjaNms    = (int)($client['ninja_nms']   ?? 0);
+                $ninjaMdm    = (int)($client['ninja_mdm']   ?? 0);
+                $ninjaVmm    = (int)($client['ninja_vmm']   ?? 0);
+                $ninjaCloud  = (int)($client['ninja_cloud'] ?? 0);
+                $ninjaTot    = $ninjaRmm + $ninjaNms + $ninjaMdm;
                 $detailId    = 'detail-' . $client['id'];
                 $clientDetails = $esetDetails[$client['id']] ?? [];
             ?>
@@ -185,13 +191,31 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                         <span class="text-body-secondary" style="font-size:.78rem;opacity:.6">· non mappé</span>
                     <?php endif; ?>
                 </td>
-                <td class="text-body-secondary small">—</td>
+                <td>
+                    <?php if ($ninjaTot > 0): ?>
+                        <div class="d-flex flex-wrap gap-1 align-items-center">
+                            <?php if ($ninjaRmm > 0): ?>
+                            <span class="badge bg-success" title="RMM"><?= $ninjaRmm ?> RMM</span>
+                            <?php endif; ?>
+                            <?php if ($ninjaNms > 0): ?>
+                            <span class="badge bg-info" title="NMS"><?= $ninjaNms ?> NMS</span>
+                            <?php endif; ?>
+                            <?php if ($ninjaMdm > 0): ?>
+                            <span class="badge bg-primary" title="MDM"><?= $ninjaMdm ?> MDM</span>
+                            <?php endif; ?>
+                        </div>
+                    <?php elseif ($ninjaVmm > 0 || $ninjaCloud > 0): ?>
+                        <span class="badge bg-secondary" title="VMM/Cloud uniquement"><?= $ninjaVmm + $ninjaCloud ?></span>
+                    <?php else: ?>
+                        <span class="text-body-secondary" style="font-size:.78rem;opacity:.6">· non mappé</span>
+                    <?php endif; ?>
+                </td>
                 <td class="text-body-secondary small">—</td>
             </tr>
 
             <!-- Ligne détail (collapse) -->
             <tr class="collapse" id="<?= $detailId ?>">
-                <td colspan="8" class="p-0">
+                <td colspan="9" class="p-0">
                     <div class="px-4 py-3 border-start border-4 border-primary-subtle bg-body-secondary">
                         <div class="row g-3">
 
@@ -251,7 +275,7 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                             </div>
 
                             <!-- Bloc Be-Cloud -->
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <div class="d-flex align-items-center mb-2">
                                     <i class="bi bi-cloud-check text-info me-2"></i>
                                     <strong class="small">Be-Cloud</strong>
@@ -283,20 +307,40 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                                 <?php endif; ?>
                             </div>
 
-                            <!-- Blocs futurs fournisseurs -->
+                            <!-- Bloc NinjaOne -->
                             <div class="col-md-3">
-                                <div class="d-flex flex-wrap gap-3 pt-1">
-                                    <?php foreach ([
-                                        ['bi-hdd-network', 'NinjaOne'],
-                                        ['bi-archive',     'Veeam'],
-                                    ] as [$icon, $name]): ?>
-                                    <div class="text-body-secondary small d-flex align-items-center gap-1 opacity-50">
-                                        <i class="bi <?= $icon ?>"></i>
-                                        <?= $name ?>
-                                        <span class="badge bg-secondary" style="font-size:.6rem">bientôt</span>
-                                    </div>
-                                    <?php endforeach; ?>
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="bi bi-hdd-network text-warning me-2"></i>
+                                    <strong class="small">NinjaOne</strong>
                                 </div>
+                                <?php if ($ninjaTot > 0 || $ninjaVmm > 0 || $ninjaCloud > 0): ?>
+                                    <div class="d-flex flex-wrap gap-1 mb-1">
+                                        <?php if ($ninjaRmm > 0): ?>
+                                        <span class="badge bg-success"><?= $ninjaRmm ?> RMM</span>
+                                        <?php endif; ?>
+                                        <?php if ($ninjaNms > 0): ?>
+                                        <span class="badge bg-info"><?= $ninjaNms ?> NMS</span>
+                                        <?php endif; ?>
+                                        <?php if ($ninjaMdm > 0): ?>
+                                        <span class="badge bg-primary"><?= $ninjaMdm ?> MDM</span>
+                                        <?php endif; ?>
+                                        <?php if ($ninjaVmm > 0): ?>
+                                        <span class="badge bg-secondary" title="no license"><?= $ninjaVmm ?> VMM</span>
+                                        <?php endif; ?>
+                                        <?php if ($ninjaCloud > 0): ?>
+                                        <span class="badge bg-secondary" title="no license"><?= $ninjaCloud ?> Cloud</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <a href="/ninjaone/licenses?search=<?= urlencode($client['name']) ?>" class="small">
+                                        Voir les équipements
+                                    </a>
+                                <?php else: ?>
+                                    <p class="text-body-secondary small mb-0">
+                                        <i class="bi bi-exclamation-circle me-1"></i>
+                                        Aucun mapping confirmé.
+                                        <a href="/mapping?provider=ninjaone" class="small">Configurer</a>
+                                    </p>
+                                <?php endif; ?>
                             </div>
 
                         </div>

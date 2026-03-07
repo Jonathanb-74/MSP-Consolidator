@@ -4,7 +4,7 @@
 $providerIcons = [
     'eset'       => ['icon' => 'bi-shield-lock',  'color' => 'text-success'],
     'becloud'    => ['icon' => 'bi-cloud-check',  'color' => 'text-info'],
-    'ninjaone'   => ['icon' => 'bi-hdd-network',  'color' => 'text-info'],
+    'ninjaone'   => ['icon' => 'bi-hdd-network',  'color' => 'text-warning'],
     'wasabi'     => ['icon' => 'bi-cloud',         'color' => 'text-warning'],
     'veeam'      => ['icon' => 'bi-archive',       'color' => 'text-primary'],
     'infomaniak' => ['icon' => 'bi-server',        'color' => 'text-secondary'],
@@ -118,7 +118,7 @@ function syncStatusBadge(?string $status): string {
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <?php if ($db && $db['is_enabled'] && in_array($code, ['eset', 'becloud'])): ?>
+                                <?php if ($db && $db['is_enabled'] && in_array($code, ['eset', 'becloud', 'ninjaone'])): ?>
                                     <button class="btn btn-sm btn-outline-primary py-0 px-2 btn-sync-conn"
                                             data-connection-id="<?= (int)$db['id'] ?>"
                                             data-provider-code="<?= htmlspecialchars($code) ?>"
@@ -147,7 +147,7 @@ function syncStatusBadge(?string $status): string {
                 </table>
             <?php endif; ?>
         </div>
-        <?php if (in_array($code, ['eset', 'becloud'])): ?>
+        <?php if (in_array($code, ['eset', 'becloud', 'ninjaone'])): ?>
         <div class="card-footer text-body-secondary small">
             <i class="bi bi-info-circle me-1"></i>
             Pour ajouter une connexion, éditez <code>config/providers.php</code>,

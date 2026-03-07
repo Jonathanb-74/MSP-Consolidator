@@ -1,6 +1,5 @@
 <?php
-/** @var array $mappings */
-/** @var array $unmapped */
+/** @var array $entities */
 /** @var array $clients */
 /** @var string $provider */
 /** @var array $providerRow */
@@ -9,415 +8,398 @@
 /** @var int $perPage */
 /** @var string $search */
 /** @var string $confirmed */
-/** @var int|null $minScore */
 /** @var array $autoConfirmPreview */
 /** @var string $sortBy */
 /** @var string $sortDir */
 
-function mappingSortLink(string $col, string $current, string $dir, string $label, array $queryParams): string {
-    $newDir = ($current === $col && $dir === 'ASC') ? 'DESC' : 'ASC';
-    $icon   = $current === $col ? ($dir === 'ASC' ? ' ↑' : ' ↓') : '';
-    $params = array_merge($queryParams, ['sort' => $col, 'dir' => $newDir]);
-    return '<a href="/mapping?' . http_build_query($params) . '" class="text-white text-decoration-none">'
-         . htmlspecialchars($label) . $icon . '</a>';
+function mSortLink(string $col, string $cur, string $dir, string $label, array $qp): string {
+    $d = ($cur === $col && $dir === 'ASC') ? 'DESC' : 'ASC';
+    $i = $cur === $col ? ($dir === 'ASC' ? ' ↑' : ' ↓') : '';
+    return '<a href="/mapping?' . http_build_query(array_merge($qp, ['sort' => $col, 'dir' => $d])) . '" class="text-white text-decoration-none">'
+         . htmlspecialchars($label) . $i . '</a>';
 }
+
+$qp = ['provider' => $provider, 'search' => $search, 'confirmed' => $confirmed, 'perPage' => $perPage];
+
+$providerTabs = [
+    'eset'     => ['label' => 'ESET',     'icon' => 'bi-shield-lock', 'color' => 'text-success'],
+    'becloud'  => ['label' => 'Be-Cloud', 'icon' => 'bi-cloud-check', 'color' => 'text-info'],
+    'ninjaone' => ['label' => 'NinjaOne', 'icon' => 'bi-hdd-network', 'color' => 'text-warning'],
+];
+
+$isUnmappedTab = ($confirmed === '0');
 ?>
 
 <div class="page-sticky-top">
 <div class="d-flex align-items-center justify-content-between mb-3">
     <h1 class="h3 mb-0">
-        Mapping — <?= htmlspecialchars($providerRow['name']) ?>
+        <i class="bi bi-link-45deg me-2"></i>Mapping fournisseurs
         <span class="badge bg-secondary ms-2"><?= number_format($total) ?></span>
     </h1>
 </div>
 
-<!-- Filtres -->
+<!-- Onglets providers -->
+<ul class="nav nav-tabs mb-3">
+    <?php foreach ($providerTabs as $code => $tab): ?>
+    <li class="nav-item">
+        <a class="nav-link <?= $provider === $code ? 'active' : '' ?>"
+           href="/mapping?provider=<?= $code ?>">
+            <i class="bi <?= $tab['icon'] ?> <?= $tab['color'] ?> me-1"></i><?= $tab['label'] ?>
+        </a>
+    </li>
+    <?php endforeach; ?>
+</ul>
+
+<!-- Onglets À mapper / Confirmés -->
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <div class="btn-group" role="group">
+        <a href="?<?= http_build_query(array_merge($qp, ['confirmed' => '0', 'page' => 1])) ?>"
+           class="btn btn-sm <?= $isUnmappedTab ? 'btn-warning' : 'btn-outline-warning' ?>">
+            <i class="bi bi-exclamation-circle me-1"></i>À mapper
+            <?php if ($isUnmappedTab): ?>
+            <span class="badge bg-dark ms-1"><?= number_format($total) ?></span>
+            <?php endif; ?>
+        </a>
+        <a href="?<?= http_build_query(array_merge($qp, ['confirmed' => '1', 'page' => 1])) ?>"
+           class="btn btn-sm <?= !$isUnmappedTab ? 'btn-success' : 'btn-outline-success' ?>">
+            <i class="bi bi-check-circle me-1"></i>Confirmés
+            <?php if (!$isUnmappedTab): ?>
+            <span class="badge bg-dark ms-1"><?= number_format($total) ?></span>
+            <?php endif; ?>
+        </a>
+    </div>
+
+    <?php if ($isUnmappedTab): ?>
+    <button class="btn btn-sm btn-outline-primary" type="button"
+            data-bs-toggle="collapse" data-bs-target="#autoConfirmPanel">
+        <i class="bi bi-magic me-1"></i>Auto-confirmer
+    </button>
+    <?php endif; ?>
+</div>
+
+<!-- Panel auto-confirm (collapsible, seulement sur l'onglet À mapper) -->
+<?php if ($isUnmappedTab): ?>
+<div class="collapse mb-3" id="autoConfirmPanel">
+    <div class="card border-0 bg-body-secondary">
+        <div class="card-body py-2">
+            <div class="d-flex align-items-center flex-wrap gap-2">
+                <span class="small text-body-secondary me-2">Confirmer tous les mappings avec score ≥ :</span>
+                <?php foreach ($autoConfirmPreview as $t => $cnt): ?>
+                <button class="btn btn-sm btn-outline-<?= $t >= 90 ? 'success' : ($t >= 70 ? 'warning' : 'danger') ?> btn-auto-confirm"
+                        data-threshold="<?= $t ?>" data-provider="<?= htmlspecialchars($provider) ?>"
+                        <?= $cnt === 0 ? 'disabled' : '' ?>>
+                    <?= $t ?>% <span class="badge bg-secondary ms-1"><?= $cnt ?></span>
+                </button>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Barre de recherche -->
 <form method="GET" action="/mapping" class="row g-2 mb-2">
-    <input type="hidden" name="provider" value="<?= htmlspecialchars($provider) ?>">
-    <div class="col-md-4">
+    <input type="hidden" name="provider"   value="<?= htmlspecialchars($provider) ?>">
+    <input type="hidden" name="confirmed"  value="<?= htmlspecialchars($confirmed) ?>">
+    <input type="hidden" name="perPage"    value="<?= $perPage ?>">
+    <div class="col-md-5">
         <div class="input-group input-group-sm">
             <span class="input-group-text"><i class="bi bi-search"></i></span>
             <input type="text" name="search" class="form-control"
-                   placeholder="Company ESET, client, numéro…"
+                   placeholder="Nom entité, client, numéro…"
                    value="<?= htmlspecialchars($search) ?>">
-        </div>
-    </div>
-    <div class="col-md-2">
-        <select name="confirmed" class="form-select form-select-sm">
-            <option value="">Tous</option>
-            <option value="0" <?= $confirmed === '0' ? 'selected' : '' ?>>Non confirmés</option>
-            <option value="1" <?= $confirmed === '1' ? 'selected' : '' ?>>Confirmés</option>
-        </select>
-    </div>
-    <div class="col-md-2">
-        <div class="input-group input-group-sm">
-            <span class="input-group-text">Score ≥</span>
-            <input type="number" name="min_score" class="form-control"
-                   min="0" max="100" placeholder="—"
-                   value="<?= $minScore !== null ? $minScore : '' ?>">
-            <span class="input-group-text">%</span>
+            <?php if ($search): ?>
+            <a href="?<?= http_build_query(array_merge($qp, ['search' => '', 'page' => 1])) ?>"
+               class="btn btn-outline-secondary btn-sm"><i class="bi bi-x"></i></a>
+            <?php endif; ?>
         </div>
     </div>
     <div class="col-auto">
         <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrer</button>
-        <a href="/mapping" class="btn btn-sm btn-outline-secondary">Réinitialiser</a>
     </div>
 </form>
 </div>
 
-<!-- Barre d'action bulk (masquée par défaut) -->
-<div id="bulkActionBar" class="alert alert-primary py-2 px-3 d-none d-flex align-items-center gap-3 sticky-top mb-3" style="top:60px;z-index:1020">
-    <i class="bi bi-check2-square"></i>
-    <span><strong id="selectedCount">0</strong> mapping(s) sélectionné(s)</span>
-    <button id="btnConfirmSelected" class="btn btn-sm btn-success ms-auto">
-        <i class="bi bi-check-all me-1"></i>Confirmer la sélection
-    </button>
-    <button id="btnDeselectAll" class="btn btn-sm btn-outline-secondary">
-        <i class="bi bi-x"></i> Désélectionner
-    </button>
+<!-- Tableau -->
+<div class="table-responsive">
+<table class="table table-hover table-sm align-middle" id="mappingTable">
+    <thead class="table-dark sticky-top">
+        <tr>
+            <th><?= mSortLink('entity', $sortBy, $sortDir, 'Entité fournisseur', $qp) ?></th>
+            <?php if ($isUnmappedTab): ?>
+            <th style="min-width:320px">Client interne</th>
+            <?php else: ?>
+            <th><?= mSortLink('client', $sortBy, $sortDir, 'Client interne', $qp) ?></th>
+            <?php endif; ?>
+            <th class="text-center" style="width:80px"><?= mSortLink('score', $sortBy, $sortDir, 'Score', $qp) ?></th>
+            <th class="text-center" style="width:90px"><?= mSortLink('method', $sortBy, $sortDir, 'Méthode', $qp) ?></th>
+            <?php if (!$isUnmappedTab): ?>
+            <th class="text-center" style="width:80px">Statut</th>
+            <?php endif; ?>
+            <th class="text-center" style="width:80px">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        <?php if (empty($entities)): ?>
+        <tr>
+            <td colspan="<?= $isUnmappedTab ? 5 : 6 ?>" class="text-center text-body-secondary py-5">
+                <i class="bi bi-<?= $isUnmappedTab ? 'check-circle text-success' : 'inbox' ?> fs-2 d-block mb-2 opacity-50"></i>
+                <?= $isUnmappedTab ? 'Tout est mappé !' : 'Aucun mapping confirmé.' ?>
+            </td>
+        </tr>
+        <?php else: ?>
+        <?php foreach ($entities as $e):
+            $mapped     = !empty($e['mapping_id']);
+            $isConf     = $mapped && $e['is_confirmed'];
+            $score      = ($mapped && $e['match_score'] !== null) ? (int)$e['match_score'] : null;
+            $scoreCls   = $score === null ? 'secondary' : ($score >= 90 ? 'success' : ($score >= 70 ? 'warning' : 'danger'));
+            $methodMap  = ['manual' => ['Manuel','primary'], 'name_match' => ['Nom','info'], 'client_number' => ['N°client','success']];
+            $ml         = $methodMap[$e['mapping_method'] ?? ''] ?? ['—','secondary'];
+
+            // Texte affiché dans l'autocomplete (client actuel si mappé)
+            $currentClientText = '';
+            if ($mapped && $e['client_name']) {
+                $currentClientText = $e['client_name'];
+                if ($e['client_number']) $currentClientText .= ' (' . $e['client_number'] . ')';
+            }
+        ?>
+        <tr>
+            <td>
+                <span class="fw-medium"><?= htmlspecialchars($e['provider_name']) ?></span>
+                <br><small class="text-body-secondary font-monospace"><?= htmlspecialchars($e['provider_client_id']) ?></small>
+            </td>
+            <td>
+                <?php if ($isUnmappedTab): ?>
+                <!-- Autocomplete client -->
+                <div class="d-flex align-items-center gap-2"
+                     data-provider-client-id="<?= htmlspecialchars($e['provider_client_id']) ?>"
+                     data-provider="<?= htmlspecialchars($provider) ?>">
+                    <div class="client-autocomplete position-relative flex-grow-1">
+                        <input type="text"
+                               class="form-control form-control-sm client-search-input"
+                               placeholder="Chercher un client…"
+                               value="<?= htmlspecialchars($currentClientText) ?>"
+                               autocomplete="off">
+                        <input type="hidden"
+                               class="client-id-input"
+                               value="<?= (int)($e['client_id'] ?? 0) ?>"
+                               data-original="<?= (int)($e['client_id'] ?? 0) ?>">
+                        <div class="client-dropdown list-group shadow-sm position-absolute w-100 d-none"
+                             style="z-index:1050;max-height:220px;overflow-y:auto;top:100%"></div>
+                    </div>
+                    <button class="btn btn-sm btn-primary btn-save-mapping flex-shrink-0"
+                            title="Sauvegarder" disabled>
+                        <i class="bi bi-check-lg"></i>
+                    </button>
+                </div>
+                <?php else: ?>
+                <!-- Vue confirmée : lecture seule -->
+                <span class="fw-medium"><?= htmlspecialchars($e['client_name'] ?? '—') ?></span>
+                <?php if ($e['client_number']): ?>
+                <br><small class="text-body-secondary"><code><?= htmlspecialchars($e['client_number']) ?></code></small>
+                <?php endif; ?>
+                <?php endif; ?>
+            </td>
+            <td class="text-center">
+                <?php if ($score !== null): ?>
+                <span class="badge bg-<?= $scoreCls ?>"><?= $score ?>%</span>
+                <?php else: ?><span class="text-body-secondary small">—</span><?php endif; ?>
+            </td>
+            <td class="text-center">
+                <span class="badge bg-<?= $ml[1] ?>"><?= $ml[0] ?></span>
+            </td>
+            <?php if (!$isUnmappedTab): ?>
+            <td class="text-center">
+                <i class="bi bi-check-circle-fill text-success" title="Confirmé"></i>
+            </td>
+            <?php endif; ?>
+            <td class="text-center">
+                <?php if ($isUnmappedTab && $mapped && !$isConf): ?>
+                <button class="btn btn-sm btn-outline-success btn-confirm-mapping"
+                        data-mapping-id="<?= $e['mapping_id'] ?>" title="Confirmer sans changer">
+                    <i class="bi bi-check-lg"></i>
+                </button>
+                <?php endif; ?>
+                <?php if ($mapped): ?>
+                <button class="btn btn-sm btn-outline-danger btn-unlink-mapping ms-1"
+                        data-mapping-id="<?= $e['mapping_id'] ?>" title="Supprimer">
+                    <i class="bi bi-trash"></i>
+                </button>
+                <?php endif; ?>
+            </td>
+        </tr>
+        <?php endforeach; ?>
+        <?php endif; ?>
+    </tbody>
+</table>
 </div>
 
-<div class="row g-4">
-
-    <!-- Mappings existants -->
-    <div class="col-lg-8">
-        <h5 class="mb-3">Mappings existants</h5>
-        <div class="table-responsive">
-            <table class="table table-hover table-sm align-middle" id="mappingTable">
-                <?php $mqp = ['provider' => $provider, 'search' => $search, 'confirmed' => $confirmed, 'min_score' => $minScore ?? '']; ?>
-                <thead class="table-dark">
-                    <tr>
-                        <th style="width:36px">
-                            <input type="checkbox" id="selectAll" class="form-check-input" title="Tout sélectionner">
-                        </th>
-                        <th><?= mappingSortLink('company', $sortBy, $sortDir, 'Company fournisseur', $mqp) ?></th>
-                        <th><?= mappingSortLink('client', $sortBy, $sortDir, 'Client interne', $mqp) ?></th>
-                        <th><?= mappingSortLink('method', $sortBy, $sortDir, 'Méthode', $mqp) ?></th>
-                        <th class="text-center" style="width:80px"><?= mappingSortLink('score', $sortBy, $sortDir, 'Score', $mqp) ?></th>
-                        <th class="text-center" style="width:90px"><?= mappingSortLink('confirmed', $sortBy, $sortDir, 'Confirmé', $mqp) ?></th>
-                        <th class="text-center" style="width:60px">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($mappings)): ?>
-                    <tr>
-                        <td colspan="7" class="text-center text-body-secondary py-4">Aucun mapping trouvé.</td>
-                    </tr>
-                    <?php else: ?>
-                    <?php foreach ($mappings as $m): ?>
-                    <?php
-                        $score = $m['match_score'] !== null ? (int)$m['match_score'] : null;
-                        $scoreBadge = match(true) {
-                            $score === null            => ['—', 'secondary'],
-                            $score >= 90               => [$score . '%', 'success'],
-                            $score >= 70               => [$score . '%', 'warning'],
-                            default                    => [$score . '%', 'danger'],
-                        };
-                    ?>
-                    <tr class="<?= !$m['is_confirmed'] ? 'table-warning' : '' ?>">
-                        <td>
-                            <?php if (!$m['is_confirmed']): ?>
-                            <input type="checkbox" class="form-check-input mapping-checkbox"
-                                   value="<?= $m['id'] ?>">
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <span class="fw-medium"><?= htmlspecialchars($m['provider_client_name'] ?? $m['provider_client_id']) ?></span>
-                            <br><small class="text-body-secondary font-monospace"><?= htmlspecialchars($m['provider_client_id']) ?></small>
-                        </td>
-                        <td>
-                            <?= htmlspecialchars($m['client_name']) ?>
-                            <br><small class="text-body-secondary"><code><?= htmlspecialchars($m['client_number']) ?></code></small>
-                        </td>
-                        <td>
-                            <?php
-                            $methodLabels = [
-                                'manual'        => ['label' => 'Manuel',    'class' => 'primary'],
-                                'client_number' => ['label' => 'N° client', 'class' => 'success'],
-                                'name_match'    => ['label' => 'Nom',       'class' => 'info'],
-                            ];
-                            $ml = $methodLabels[$m['mapping_method']] ?? ['label' => $m['mapping_method'], 'class' => 'secondary'];
-                            ?>
-                            <span class="badge bg-<?= $ml['class'] ?>"><?= $ml['label'] ?></span>
-                        </td>
-                        <td class="text-center">
-                            <span class="badge bg-<?= $scoreBadge[1] ?> <?= $score === null ? 'text-body-secondary' : '' ?>">
-                                <?= $scoreBadge[0] ?>
-                            </span>
-                        </td>
-                        <td class="text-center">
-                            <?php if ($m['is_confirmed']): ?>
-                                <i class="bi bi-check-circle-fill text-success" title="Confirmé"></i>
-                            <?php else: ?>
-                                <button class="btn btn-xs btn-outline-success btn-confirm-mapping"
-                                        data-mapping-id="<?= $m['id'] ?>"
-                                        data-client-id="<?= $m['client_id'] ?>"
-                                        data-provider-client-id="<?= htmlspecialchars($m['provider_client_id']) ?>"
-                                        data-provider="<?= htmlspecialchars($provider) ?>"
-                                        title="Confirmer">
-                                    <i class="bi bi-check-lg"></i>
-                                </button>
-                            <?php endif; ?>
-                        </td>
-                        <td class="text-center">
-                            <button class="btn btn-sm btn-outline-danger btn-unlink-mapping"
-                                    data-mapping-id="<?= $m['id'] ?>" title="Supprimer">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+<!-- Pagination -->
+<?php
+$totalPages = (int)ceil($total / $perPage);
+$base = http_build_query(array_merge($qp, ['sort' => $sortBy, 'dir' => $sortDir]));
+?>
+<div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+    <small class="text-body-secondary">
+        <?= number_format(min(($page - 1) * $perPage + 1, max($total, 1))) ?>–<?= number_format(min($page * $perPage, $total)) ?> sur <?= number_format($total) ?>
+    </small>
+    <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center gap-2">
+            <label class="small text-body-secondary mb-0">Par page :</label>
+            <select class="form-select form-select-sm" style="width:auto"
+                    onchange="const u=new URL(window.location);u.searchParams.set('perPage',this.value);u.searchParams.set('page','1');window.location=u">
+                <?php foreach ([25, 50, 100, 250] as $pp): ?>
+                <option value="<?= $pp ?>" <?= $perPage === $pp ? 'selected' : '' ?>><?= $pp ?></option>
+                <?php endforeach; ?>
+            </select>
         </div>
-
-        <?php
-        $totalPages  = (int)ceil($total / $perPage);
-        $mappingBase = http_build_query(['provider' => $provider, 'search' => $search, 'confirmed' => $confirmed, 'min_score' => $minScore ?? '', 'sort' => $sortBy, 'dir' => $sortDir, 'perPage' => $perPage]);
-        ?>
-        <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
-            <small class="text-body-secondary">
-                <?= number_format(min(($page - 1) * $perPage + 1, max($total, 1))) ?>–<?= number_format(min($page * $perPage, $total)) ?> sur <?= number_format($total) ?>
-            </small>
-            <div class="d-flex align-items-center gap-3">
-                <div class="d-flex align-items-center gap-2">
-                    <label class="small text-body-secondary mb-0">Par page :</label>
-                    <select class="form-select form-select-sm" style="width:auto"
-                            onchange="const u=new URL(window.location);u.searchParams.set('perPage',this.value);u.searchParams.set('page','1');window.location=u">
-                        <?php foreach ([25, 50, 100, 250] as $pp): ?>
-                        <option value="<?= $pp ?>" <?= $perPage === $pp ? 'selected' : '' ?>><?= $pp ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <?php if ($totalPages > 1): ?>
-                <nav><ul class="pagination pagination-sm mb-0">
-                    <?php for ($p = 1; $p <= $totalPages; $p++): ?>
-                    <li class="page-item <?= $p === $page ? 'active' : '' ?>">
-                        <a class="page-link" href="?<?= $mappingBase ?>&page=<?= $p ?>"><?= $p ?></a>
-                    </li>
-                    <?php endfor; ?>
-                </ul></nav>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-
-    <!-- Panneau latéral -->
-    <div class="col-lg-4">
-
-        <!-- Validation automatique par score -->
-        <div class="card border-0 bg-body-secondary mb-3">
-            <div class="card-header bg-transparent border-0">
-                <h6 class="mb-0"><i class="bi bi-magic me-2"></i>Validation par score</h6>
-            </div>
-            <div class="card-body">
-                <p class="small text-body-secondary mb-3">
-                    Confirme automatiquement tous les mappings non validés dont le score est supérieur ou égal au seuil choisi.
-                </p>
-
-                <!-- Preview des seuils -->
-                <div class="mb-3">
-                    <?php foreach ($autoConfirmPreview as $t => $cnt): ?>
-                    <div class="d-flex align-items-center justify-content-between small mb-1">
-                        <span>
-                            <span class="badge bg-<?= $t >= 90 ? 'success' : ($t >= 70 ? 'warning' : 'danger') ?> me-1"><?= $t ?>%</span>
-                        </span>
-                        <span class="text-body-secondary"><?= $cnt ?> à confirmer</span>
-                        <button class="btn btn-xs btn-outline-success btn-auto-confirm-threshold"
-                                data-threshold="<?= $t ?>"
-                                data-provider="<?= htmlspecialchars($provider) ?>"
-                                <?= $cnt === 0 ? 'disabled' : '' ?>>
-                            <i class="bi bi-check2-all"></i>
-                        </button>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-
-                <hr class="my-2">
-
-                <!-- Seuil personnalisé -->
-                <div class="input-group input-group-sm mb-2">
-                    <span class="input-group-text">Score ≥</span>
-                    <input type="number" id="customThreshold" class="form-control"
-                           value="80" min="0" max="100" step="5">
-                    <span class="input-group-text">%</span>
-                </div>
-                <button id="btnAutoConfirmCustom" class="btn btn-sm btn-primary w-100"
-                        data-provider="<?= htmlspecialchars($provider) ?>">
-                    <i class="bi bi-check2-all me-1"></i>Valider ce seuil
-                </button>
-            </div>
-        </div>
-
-        <!-- Liaison manuelle -->
-        <div class="card border-0 bg-body-secondary">
-            <div class="card-header bg-transparent border-0">
-                <h6 class="mb-0"><i class="bi bi-link-45deg me-2"></i>Liaison manuelle</h6>
-            </div>
-            <div class="card-body">
-                <form id="formManualLink">
-                    <div class="mb-3">
-                        <label class="form-label small">Company <?= htmlspecialchars($providerRow['name']) ?></label>
-                        <select name="provider_client_id" class="form-select form-select-sm" required>
-                            <option value="">Sélectionner une company…</option>
-                            <?php foreach ($unmapped as $u): ?>
-                            <option value="<?= htmlspecialchars($u['eset_company_id']) ?>">
-                                <?= htmlspecialchars($u['name']) ?>
-                                <?= $u['custom_identifier'] ? ' [' . htmlspecialchars($u['custom_identifier']) . ']' : '' ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small">Client interne</label>
-                        <select name="client_id" class="form-select form-select-sm" required>
-                            <option value="">Sélectionner un client…</option>
-                            <?php foreach ($clients as $c): ?>
-                            <option value="<?= $c['id'] ?>">
-                                <?= htmlspecialchars($c['name']) ?>
-                                (<?= htmlspecialchars($c['client_number']) ?>)
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small">Notes (optionnel)</label>
-                        <input type="text" name="notes" class="form-control form-control-sm"
-                               placeholder="Ex : mapping manuel suite à migration">
-                    </div>
-                    <input type="hidden" name="provider" value="<?= htmlspecialchars($provider) ?>">
-                    <button type="submit" class="btn btn-sm btn-primary w-100">
-                        <i class="bi bi-link me-1"></i>Lier
-                    </button>
-                </form>
-            </div>
-        </div>
-
-        <?php if (!empty($unmapped)): ?>
-        <div class="alert alert-warning mt-3 small">
-            <i class="bi bi-exclamation-triangle me-1"></i>
-            <strong><?= count($unmapped) ?></strong> companie(s) sans mapping.
-        </div>
+        <?php if ($totalPages > 1): ?>
+        <nav><ul class="pagination pagination-sm mb-0">
+            <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+            <li class="page-item <?= $p === $page ? 'active' : '' ?>">
+                <a class="page-link" href="?<?= $base ?>&page=<?= $p ?>"><?= $p ?></a>
+            </li>
+            <?php endfor; ?>
+        </ul></nav>
         <?php endif; ?>
     </div>
-
 </div>
 
 <script>
-// ── Sélection et bulk confirm ───────────────────────────────────────────────
+// ── Données clients (pour autocomplete) ─────────────────────────────────────
+const CLIENTS_DATA = <?= json_encode(array_map(fn($c) => [
+    'id'     => (int)$c['id'],
+    'name'   => $c['name'],
+    'num'    => $c['client_number'] ?? '',
+    'label'  => $c['name'] . ($c['client_number'] ? ' (' . $c['client_number'] . ')' : ''),
+    'search' => strtolower($c['name'] . ' ' . ($c['client_number'] ?? '')),
+], $clients), JSON_UNESCAPED_UNICODE) ?>;
 
-const bulkBar       = document.getElementById('bulkActionBar');
-const selectedCount = document.getElementById('selectedCount');
-const selectAll     = document.getElementById('selectAll');
+// ── Autocomplete ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.client-autocomplete').forEach(function(ac) {
+    const input    = ac.querySelector('.client-search-input');
+    const hidden   = ac.querySelector('.client-id-input');
+    const dropdown = ac.querySelector('.client-dropdown');
+    const row      = ac.closest('[data-provider-client-id]');
+    const saveBtn  = row.querySelector('.btn-save-mapping');
 
-function updateBulkBar() {
-    const checked = document.querySelectorAll('.mapping-checkbox:checked');
-    const n = checked.length;
-    selectedCount.textContent = n;
-    bulkBar.classList.toggle('d-none', n === 0);
-    bulkBar.classList.toggle('d-flex', n > 0);
-}
+    function showDropdown(q) {
+        const matches = CLIENTS_DATA.filter(c => c.search.includes(q)).slice(0, 12);
+        dropdown.innerHTML = '';
+        if (!matches.length) { dropdown.classList.add('d-none'); return; }
 
-selectAll?.addEventListener('change', function () {
-    document.querySelectorAll('.mapping-checkbox').forEach(cb => cb.checked = this.checked);
-    updateBulkBar();
-});
+        matches.forEach(c => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action py-1 px-2 small';
+            btn.innerHTML = '<strong>' + esc(c.name) + '</strong>'
+                + (c.num ? ' <span class="text-body-secondary">(' + esc(c.num) + ')</span>' : '');
+            btn.addEventListener('mousedown', function(e) {
+                e.preventDefault(); // évite blur avant click
+                input.value  = c.label;
+                hidden.value = c.id;
+                dropdown.classList.add('d-none');
+                saveBtn.disabled = String(c.id) === String(hidden.dataset.original);
+            });
+            dropdown.appendChild(btn);
+        });
+        dropdown.classList.remove('d-none');
+    }
 
-document.querySelectorAll('.mapping-checkbox').forEach(cb => {
-    cb.addEventListener('change', function () {
-        if (!this.checked) selectAll.checked = false;
-        updateBulkBar();
+    input.addEventListener('input', function() {
+        const q = this.value.toLowerCase().trim();
+        if (q.length < 1) { dropdown.classList.add('d-none'); return; }
+        showDropdown(q);
+    });
+
+    input.addEventListener('focus', function() {
+        const q = this.value.toLowerCase().trim();
+        if (q.length >= 1) showDropdown(q);
+    });
+
+    input.addEventListener('blur', function() {
+        setTimeout(() => dropdown.classList.add('d-none'), 150);
+    });
+
+    // Si l'utilisateur efface manuellement le texte → réinitialiser
+    input.addEventListener('input', function() {
+        if (this.value === '') {
+            hidden.value = '';
+            saveBtn.disabled = hidden.dataset.original === '';
+        }
+    });
+
+    saveBtn.addEventListener('click', function() {
+        const clientId = hidden.value;
+        if (!clientId) { alert('Veuillez sélectionner un client.'); return; }
+
+        const fd = new FormData();
+        fd.append('client_id', clientId);
+        fd.append('provider_client_id', row.dataset.providerClientId);
+        fd.append('provider', row.dataset.provider);
+
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        fetch('/mapping/link', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) location.reload();
+                else {
+                    alert('❌ ' + d.message);
+                    this.disabled = false;
+                    this.innerHTML = '<i class="bi bi-check-lg"></i>';
+                }
+            })
+            .catch(() => {
+                alert('❌ Erreur réseau');
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-check-lg"></i>';
+            });
     });
 });
 
-document.getElementById('btnDeselectAll')?.addEventListener('click', function () {
-    document.querySelectorAll('.mapping-checkbox').forEach(cb => cb.checked = false);
-    if (selectAll) selectAll.checked = false;
-    updateBulkBar();
-});
-
-document.getElementById('btnConfirmSelected')?.addEventListener('click', function () {
-    const ids = [...document.querySelectorAll('.mapping-checkbox:checked')].map(cb => cb.value);
-    if (!ids.length) return;
-    if (!confirm(`Confirmer ${ids.length} mapping(s) ?`)) return;
-
-    const data = new FormData();
-    data.append('mapping_ids', ids.join(','));
-
-    fetch('/mapping/confirm-bulk', { method: 'POST', body: data })
-        .then(r => r.json())
-        .then(d => {
-            alert(d.success ? '✅ ' + d.message : '❌ ' + d.message);
-            if (d.success) location.reload();
-        })
-        .catch(() => alert('❌ Erreur réseau'));
-});
-
-// ── Validation automatique par seuil ───────────────────────────────────────
-
-function autoConfirm(threshold, providerCode) {
-    if (!confirm(`Confirmer tous les mappings avec un score ≥ ${threshold}% ?`)) return;
-
-    const data = new FormData();
-    data.append('threshold', threshold);
-    data.append('provider', providerCode);
-
-    fetch('/mapping/auto-confirm', { method: 'POST', body: data })
-        .then(r => r.json())
-        .then(d => {
-            alert(d.success ? '✅ ' + d.message : '❌ ' + d.message);
-            if (d.success) location.reload();
-        })
-        .catch(() => alert('❌ Erreur réseau'));
+function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-document.querySelectorAll('.btn-auto-confirm-threshold').forEach(btn => {
-    btn.addEventListener('click', function () {
-        autoConfirm(this.dataset.threshold, this.dataset.provider);
-    });
-});
-
-document.getElementById('btnAutoConfirmCustom')?.addEventListener('click', function () {
-    const threshold = document.getElementById('customThreshold').value;
-    autoConfirm(threshold, this.dataset.provider);
-});
-
-// ── Liaison manuelle ────────────────────────────────────────────────────────
-
-document.getElementById('formManualLink').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const data = new FormData(this);
-    fetch('/mapping/link', { method: 'POST', body: data })
-        .then(r => r.json())
-        .then(d => { alert(d.success ? '✅ ' + d.message : '❌ ' + d.message); if (d.success) location.reload(); })
-        .catch(() => alert('❌ Erreur réseau'));
-});
-
-// ── Confirmer mapping individuel ────────────────────────────────────────────
-
+// ── Confirmer mapping (sans changer le client) ───────────────────────────────
 document.querySelectorAll('.btn-confirm-mapping').forEach(btn => {
     btn.addEventListener('click', function() {
-        const data = new FormData();
-        data.append('client_id', this.dataset.clientId);
-        data.append('provider_client_id', this.dataset.providerClientId);
-        data.append('provider', this.dataset.provider);
-        fetch('/mapping/link', { method: 'POST', body: data })
+        const fd = new FormData();
+        fd.append('mapping_ids', this.dataset.mappingId);
+        fetch('/mapping/confirm-bulk', { method: 'POST', body: fd })
             .then(r => r.json())
-            .then(d => { if (d.success) location.reload(); else alert('❌ ' + d.message); });
+            .then(d => { if (d.success) location.reload(); else alert('❌ ' + d.message); })
+            .catch(() => alert('❌ Erreur réseau'));
     });
 });
 
-// ── Supprimer mapping ───────────────────────────────────────────────────────
-
+// ── Supprimer mapping ────────────────────────────────────────────────────────
 document.querySelectorAll('.btn-unlink-mapping').forEach(btn => {
     btn.addEventListener('click', function() {
         if (!confirm('Supprimer ce mapping ?')) return;
-        const data = new FormData();
-        data.append('mapping_id', this.dataset.mappingId);
-        fetch('/mapping/unlink', { method: 'POST', body: data })
+        const fd = new FormData();
+        fd.append('mapping_id', this.dataset.mappingId);
+        fetch('/mapping/unlink', { method: 'POST', body: fd })
             .then(r => r.json())
-            .then(d => { if (d.success) location.reload(); else alert('❌ ' + d.message); });
+            .then(d => { if (d.success) location.reload(); else alert('❌ ' + d.message); })
+            .catch(() => alert('❌ Erreur réseau'));
+    });
+});
+
+// ── Auto-confirm ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.btn-auto-confirm').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const t = this.dataset.threshold;
+        if (!confirm(`Confirmer tous les mappings avec score ≥ ${t}% ?`)) return;
+        const fd = new FormData();
+        fd.append('threshold', t);
+        fd.append('provider', this.dataset.provider);
+        fetch('/mapping/auto-confirm', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(d => { alert(d.success ? '✅ ' + d.message : '❌ ' + d.message); if (d.success) location.reload(); })
+            .catch(() => alert('❌ Erreur réseau'));
     });
 });
 </script>

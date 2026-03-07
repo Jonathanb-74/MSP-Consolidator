@@ -35,14 +35,18 @@ class LicenseController extends Controller
             'eset_count'    => 'eset_lic_count',
             'eset_usage'    => 'eset_usage_pct',
             'bc_count'      => 'bc_sub_count',
+            'ninja_rmm'     => 'ninja_rmm',
+            'ninja_nms'     => 'ninja_nms',
+            'ninja_mdm'     => 'ninja_mdm',
         ];
         $orderCol = $allowedSorts[$sortBy] ?? 'c.name';
 
         // HAVING : filtre par présence de licences fournisseur
         $havingSql = match($providerFilter) {
-            'eset'    => 'HAVING eset_lic_count > 0',
-            'becloud' => 'HAVING bc_sub_count > 0',
-            default   => '',
+            'eset'     => 'HAVING eset_lic_count > 0',
+            'becloud'  => 'HAVING bc_sub_count > 0',
+            'ninjaone' => 'HAVING (ninja_rmm + ninja_nms + ninja_mdm) > 0',
+            default    => '',
         };
 
         [$whereSql, $whereParams] = $this->buildWhere($search, $tagId);
@@ -91,7 +95,12 @@ class LicenseController extends Controller
                       / NULLIF(COALESCE(SUM(el.quantity), 0), 0) * 100)    AS eset_usage_pct,
                 COALESCE(bc_agg.bc_sub_count, 0)                           AS bc_sub_count,
                 COALESCE(bc_agg.bc_seats_total, 0)                         AS bc_seats_total,
-                COALESCE(bc_agg.bc_seats_used, 0)                          AS bc_seats_used
+                COALESCE(bc_agg.bc_seats_used, 0)                          AS bc_seats_used,
+                COALESCE(ninja_agg.ninja_rmm,   0)                         AS ninja_rmm,
+                COALESCE(ninja_agg.ninja_nms,   0)                         AS ninja_nms,
+                COALESCE(ninja_agg.ninja_mdm,   0)                         AS ninja_mdm,
+                COALESCE(ninja_agg.ninja_vmm,   0)                         AS ninja_vmm,
+                COALESCE(ninja_agg.ninja_cloud, 0)                         AS ninja_cloud
              FROM clients c
              LEFT JOIN client_tags ct ON ct.client_id = c.id
              LEFT JOIN client_provider_mappings cpm
@@ -113,6 +122,20 @@ class LicenseController extends Controller
                      AND cpm2.is_confirmed = 1
                 GROUP BY cpm2.client_id
              ) bc_agg ON bc_agg.client_id = c.id
+             LEFT JOIN (
+                SELECT cpm3.client_id,
+                       SUM(no2.rmm_count)   AS ninja_rmm,
+                       SUM(no2.nms_count)   AS ninja_nms,
+                       SUM(no2.mdm_count)   AS ninja_mdm,
+                       SUM(no2.vmm_count)   AS ninja_vmm,
+                       SUM(no2.cloud_count) AS ninja_cloud
+                FROM ninjaone_organizations no2
+                JOIN client_provider_mappings cpm3
+                     ON cpm3.provider_client_id = CAST(no2.ninjaone_org_id AS CHAR) COLLATE utf8mb4_general_ci
+                     AND cpm3.connection_id = no2.connection_id
+                     AND cpm3.is_confirmed = 1
+                GROUP BY cpm3.client_id
+             ) ninja_agg ON ninja_agg.client_id = c.id
              $whereSql
              GROUP BY c.id
              $havingSql
@@ -164,6 +187,7 @@ class LicenseController extends Controller
             'sortDir'        => $sortDir,
             'providerFilter' => $providerFilter,
             'bcDetails'      => [],
+            'ninjaDetails'   => [],
         ]);
     }
 

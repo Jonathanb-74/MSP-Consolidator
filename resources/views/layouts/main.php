@@ -61,7 +61,7 @@
         $_sidebarProviderMeta = [
             'eset'       => ['icon' => 'bi-shield-lock',  'color' => 'text-success', 'url' => '/eset/licenses',     'prefix' => '/eset'],
             'becloud'    => ['icon' => 'bi-cloud-check',  'color' => 'text-info',    'url' => '/becloud/licenses', 'prefix' => '/becloud'],
-            'ninjaone'   => ['icon' => 'bi-hdd-network',  'color' => 'text-info'],
+            'ninjaone'   => ['icon' => 'bi-hdd-network',  'color' => 'text-warning', 'url' => '/ninjaone/licenses', 'prefix' => '/ninjaone'],
             'wasabi'     => ['icon' => 'bi-cloud',         'color' => 'text-warning'],
             'veeam'      => ['icon' => 'bi-archive',       'color' => 'text-primary'],
             'infomaniak' => ['icon' => 'bi-server',        'color' => 'text-secondary'],
@@ -402,6 +402,8 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
         let seconds = 0;
         const hint = providerCode === 'becloud'
             ? 'Récupération des customers et des abonnements Be-Cloud'
+            : providerCode === 'ninjaone'
+            ? 'Récupération des organisations et des équipements NinjaOne'
             : 'Récupération des companies et des licences ESET';
         modalBody.innerHTML = `
             <div class="text-center py-3">
@@ -438,6 +440,10 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
             const su = s.subscriptions  ?? {};
             block1 = { count: cu.fetched ?? 0, label: 'Customers',      created: cu.created ?? 0, updated: cu.updated ?? 0 };
             block2 = { count: su.fetched ?? 0, label: 'Abonnements',    created: su.created ?? 0, updated: su.updated ?? 0 };
+        } else if (providerCode === 'ninjaone') {
+            const or = s.organizations ?? {};
+            block1 = { count: or.fetched ?? 0,         label: 'Organisations', created: or.created ?? 0, updated: or.updated ?? 0 };
+            block2 = { count: s.devices_fetched ?? 0,  label: 'Équipements',   created: 0,               updated: 0 };
         } else {
             const co = s.companies ?? {};
             const li = s.licenses  ?? {};
@@ -450,10 +456,11 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
         if (logsLink) logsLink.href = '/' + (providerCode || 'eset') + '/sync-logs';
 
         let errHtml = '';
-        if (errors.length) {
+        const allErrors = errors.length ? errors : (data.message && !ok ? [data.message] : []);
+        if (allErrors.length) {
             errHtml = `<div class="alert alert-danger mt-3 mb-0 small">
                 <strong>Erreurs :</strong>
-                <ul class="mb-0 mt-1">${errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul>
+                <ul class="mb-0 mt-1">${allErrors.map(e => `<li>${esc(e)}</li>`).join('')}</ul>
             </div>`;
         }
 
@@ -514,6 +521,8 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
         if (titleEl) {
             if (providerCode === 'becloud') {
                 titleEl.innerHTML = '<i class="bi bi-cloud-check text-info me-2"></i>Synchronisation Be-Cloud';
+            } else if (providerCode === 'ninjaone') {
+                titleEl.innerHTML = '<i class="bi bi-hdd-network text-warning me-2"></i>Synchronisation NinjaOne';
             } else {
                 titleEl.innerHTML = '<i class="bi bi-shield-lock text-success me-2"></i>Synchronisation ESET';
             }

@@ -21,23 +21,13 @@ class MappingController extends Controller
     {
         $provider  = $_GET['provider'] ?? 'eset';
         $search    = trim($_GET['search'] ?? '');
-        $confirmed = $_GET['confirmed'] ?? '';  // '', '0', '1'
-        $minScore  = ($_GET['min_score'] ?? '') !== '' ? (int)$_GET['min_score'] : null;
-        $sortBy    = $_GET['sort'] ?? 'confirmed';
+        $confirmed = $_GET['confirmed'] ?? '0';
+        $sortBy    = $_GET['sort'] ?? 'entity';
         $sortDir   = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
         $page      = max(1, (int)($_GET['page'] ?? 1));
-        $_pp     = (int)($_GET['perPage'] ?? 50);
-        $perPage = in_array($_pp, [25, 50, 100, 250]) ? $_pp : 50;
+        $_pp       = (int)($_GET['perPage'] ?? 50);
+        $perPage   = in_array($_pp, [25, 50, 100, 250]) ? $_pp : 50;
         $offset    = ($page - 1) * $perPage;
-
-        $allowedSorts = [
-            'company'   => 'prov_tbl.name',
-            'client'    => 'c.name',
-            'method'    => 'cpm.mapping_method',
-            'score'     => 'cpm.match_score',
-            'confirmed' => 'cpm.is_confirmed',
-        ];
-        $orderCol = $allowedSorts[$sortBy] ?? 'cpm.is_confirmed';
 
         $providerRow = $this->db->fetchOne(
             "SELECT id, name FROM providers WHERE code = ? LIMIT 1",
@@ -50,89 +40,101 @@ class MappingController extends Controller
             return;
         }
 
-        // Table et colonne ID selon le provider
-        if ($provider === 'becloud') {
-            $provJoin       = "JOIN be_cloud_customers prov_tbl ON prov_tbl.be_cloud_customer_id = cpm.provider_client_id";
-            $unmappedSelect = "SELECT prov_tbl.be_cloud_customer_id AS provider_client_id, prov_tbl.name, prov_tbl.internal_identifier AS custom_identifier FROM be_cloud_customers prov_tbl";
-            $unmappedCond   = "prov_tbl.be_cloud_customer_id NOT IN (SELECT provider_client_id FROM client_provider_mappings WHERE provider_id = ?)";
+        $pid = (int)$providerRow['id'];
+
+        // Construire les parties de requête spécifiques au provider
+        if ($provider === 'ninjaone') {
+            $entityTable  = 'ninjaone_organizations ent';
+            $entityIdExpr = 'CAST(ent.ninjaone_org_id AS CHAR) COLLATE utf8mb4_general_ci';
+            $connExpr     = 'ent.connection_id';
+            $cpmJoin      = "LEFT JOIN client_provider_mappings cpm
+                             ON cpm.provider_client_id = CAST(ent.ninjaone_org_id AS CHAR) COLLATE utf8mb4_general_ci
+                             AND cpm.connection_id = ent.connection_id
+                             AND cpm.provider_id = $pid";
+        } elseif ($provider === 'becloud') {
+            $entityTable  = 'be_cloud_customers ent';
+            $entityIdExpr = 'ent.be_cloud_customer_id';
+            $connExpr     = 'ent.connection_id';
+            $cpmJoin      = "LEFT JOIN client_provider_mappings cpm
+                             ON cpm.provider_client_id = ent.be_cloud_customer_id
+                             AND cpm.connection_id = ent.connection_id
+                             AND cpm.provider_id = $pid";
         } else {
-            $provJoin       = "JOIN eset_companies prov_tbl ON prov_tbl.eset_company_id = cpm.provider_client_id";
-            $unmappedSelect = "SELECT prov_tbl.eset_company_id AS provider_client_id, prov_tbl.name, prov_tbl.custom_identifier FROM eset_companies prov_tbl";
-            $unmappedCond   = "prov_tbl.eset_company_id NOT IN (SELECT provider_client_id FROM client_provider_mappings WHERE provider_id = ?)";
+            $entityTable  = 'eset_companies ent';
+            $entityIdExpr = 'ent.eset_company_id';
+            $connExpr     = 'NULL';
+            $cpmJoin      = "LEFT JOIN client_provider_mappings cpm
+                             ON cpm.provider_client_id = ent.eset_company_id
+                             AND cpm.provider_id = $pid";
         }
 
-        $conditions = ["cpm.provider_id = ?"];
-        $queryParams = [(int)$providerRow['id']];
+        $allowedSorts = [
+            'entity'    => 'ent.name',
+            'client'    => 'c.name',
+            'method'    => 'cpm.mapping_method',
+            'score'     => 'cpm.match_score',
+            'confirmed' => 'cpm.is_confirmed',
+        ];
+        $orderCol = $allowedSorts[$sortBy] ?? 'ent.name';
+
+        $conditions  = [];
+        $queryParams = [];
 
         if ($search !== '') {
-            $conditions[] = "(prov_tbl.name LIKE ? OR c.name LIKE ? OR c.client_number LIKE ?)";
+            $conditions[] = "(ent.name LIKE ? OR c.name LIKE ? OR c.client_number LIKE ?)";
             $like = '%' . $search . '%';
             array_push($queryParams, $like, $like, $like);
         }
 
         if ($confirmed === '0') {
-            $conditions[] = "cpm.is_confirmed = 0";
+            $conditions[] = "(cpm.id IS NULL OR cpm.is_confirmed = 0)";
         } elseif ($confirmed === '1') {
             $conditions[] = "cpm.is_confirmed = 1";
         }
 
-        if ($minScore !== null) {
-            $conditions[] = "cpm.match_score >= ?";
-            $queryParams[] = $minScore;
-        }
-
-        $whereSql = 'WHERE ' . implode(' AND ', $conditions);
+        $whereSql = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
         $total = $this->db->count(
             "SELECT COUNT(*)
-             FROM client_provider_mappings cpm
-             $provJoin
-             JOIN clients c ON c.id = cpm.client_id
+             FROM $entityTable
+             $cpmJoin
+             LEFT JOIN clients c ON c.id = cpm.client_id
              $whereSql",
             $queryParams
         );
 
-        $mappings = $this->db->fetchAll(
+        $entities = $this->db->fetchAll(
             "SELECT
-                cpm.id,
-                cpm.provider_client_id,
-                cpm.provider_client_name,
-                cpm.mapping_method,
+                $entityIdExpr  AS provider_client_id,
+                ent.name       AS provider_name,
+                $connExpr      AS connection_id,
+                cpm.id         AS mapping_id,
+                cpm.client_id,
                 cpm.is_confirmed,
                 cpm.match_score,
+                cpm.mapping_method,
                 cpm.notes,
-                c.id AS client_id,
-                c.name AS client_name,
+                c.name         AS client_name,
                 c.client_number
-             FROM client_provider_mappings cpm
-             $provJoin
-             JOIN clients c ON c.id = cpm.client_id
+             FROM $entityTable
+             $cpmJoin
+             LEFT JOIN clients c ON c.id = cpm.client_id
              $whereSql
-             ORDER BY $orderCol $sortDir, prov_tbl.name ASC
+             ORDER BY $orderCol $sortDir, ent.name ASC
              LIMIT $perPage OFFSET $offset",
             $queryParams
         );
 
-        // Entrées sans mapping pour permettre la liaison manuelle
-        $unmapped = $this->db->fetchAll(
-            "$unmappedSelect WHERE $unmappedCond ORDER BY prov_tbl.name LIMIT 200",
-            [(int)$providerRow['id']]
-        );
-
         $clients = $this->db->fetchAll(
-            "SELECT c.id, c.name, c.client_number
-             FROM clients c
-             WHERE c.is_active = 1
-             ORDER BY c.name"
+            "SELECT id, name, client_number FROM clients WHERE is_active = 1 ORDER BY name"
         );
 
-        // Comptage des mappings non confirmés avec score >= seuil (pour la preview auto-confirm)
         $autoConfirmPreview = [];
         foreach ([100, 95, 90, 85, 80, 70] as $t) {
             $autoConfirmPreview[$t] = $this->db->count(
                 "SELECT COUNT(*) FROM client_provider_mappings
                  WHERE provider_id = ? AND is_confirmed = 0 AND match_score >= ?",
-                [(int)$providerRow['id'], $t]
+                [$pid, $t]
             );
         }
 
@@ -141,15 +143,13 @@ class MappingController extends Controller
             'breadcrumbs'        => ['Dashboard' => '/', 'Mapping' => null],
             'provider'           => $provider,
             'providerRow'        => $providerRow,
-            'mappings'           => $mappings,
-            'unmapped'           => $unmapped,
+            'entities'           => $entities,
             'clients'            => $clients,
             'total'              => $total,
             'page'               => $page,
             'perPage'            => $perPage,
             'search'             => $search,
             'confirmed'          => $confirmed,
-            'minScore'           => $minScore,
             'autoConfirmPreview' => $autoConfirmPreview,
             'sortBy'             => $sortBy,
             'sortDir'            => $sortDir,
@@ -181,35 +181,46 @@ class MappingController extends Controller
             return;
         }
 
-        // Company name pour le mapping
-        $companyName = null;
+        // Company name + connection_id selon le provider
+        $companyName  = null;
+        $connectionId = null;
+
         if ($providerCode === 'eset') {
-            $company = $this->db->fetchOne(
+            $entity      = $this->db->fetchOne(
                 "SELECT name FROM eset_companies WHERE eset_company_id = ? LIMIT 1",
                 [$providerClientId]
             );
-            $companyName = $company['name'] ?? null;
+            $companyName = $entity['name'] ?? null;
         } elseif ($providerCode === 'becloud') {
-            $company = $this->db->fetchOne(
-                "SELECT name FROM be_cloud_customers WHERE be_cloud_customer_id = ? LIMIT 1",
+            $entity       = $this->db->fetchOne(
+                "SELECT name, connection_id FROM be_cloud_customers WHERE be_cloud_customer_id = ? LIMIT 1",
                 [$providerClientId]
             );
-            $companyName = $company['name'] ?? null;
+            $companyName  = $entity['name'] ?? null;
+            $connectionId = $entity['connection_id'] ?? null;
+        } elseif ($providerCode === 'ninjaone') {
+            $entity       = $this->db->fetchOne(
+                "SELECT name, connection_id FROM ninjaone_organizations WHERE ninjaone_org_id = ? LIMIT 1",
+                [(int)$providerClientId]
+            );
+            $companyName  = $entity['name'] ?? null;
+            $connectionId = $entity['connection_id'] ?? null;
         }
 
         $this->db->execute(
             "INSERT INTO client_provider_mappings
-                (client_id, provider_id, provider_client_id, provider_client_name,
+                (client_id, provider_id, connection_id, provider_client_id, provider_client_name,
                  mapping_method, is_confirmed, notes)
-             VALUES (?, ?, ?, ?, 'manual', 1, ?)
+             VALUES (?, ?, ?, ?, ?, 'manual', 1, ?)
              ON DUPLICATE KEY UPDATE
                 client_id            = VALUES(client_id),
+                connection_id        = VALUES(connection_id),
                 provider_client_name = VALUES(provider_client_name),
                 mapping_method       = 'manual',
                 is_confirmed         = 1,
                 notes                = VALUES(notes),
                 updated_at           = NOW()",
-            [$clientId, (int)$provider['id'], $providerClientId, $companyName, $notes ?: null]
+            [$clientId, (int)$provider['id'], $connectionId, $providerClientId, $companyName, $notes ?: null]
         );
 
         $this->json(['success' => true, 'message' => 'Mapping enregistré.']);
