@@ -1,6 +1,7 @@
 <?php
 /** @var array $clients */
 /** @var array $esetDetails */
+/** @var array $ikDetails */
 /** @var int $total */
 /** @var int $page */
 /** @var int $perPage */
@@ -41,7 +42,7 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
 
 <?php
 $activeFilters = count($tagIds) + count($providerFilters);
-$providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'NinjaOne'];
+$providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'NinjaOne', 'infomaniak' => 'Infomaniak'];
 ?>
 <!-- Filtres -->
 <form method="GET" action="/licenses" id="licenseFilterForm" class="d-flex flex-wrap gap-2 align-items-center mb-2">
@@ -189,17 +190,16 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                     <i class="bi bi-hdd-network me-1 text-warning"></i>
                     <?= licSortLink('ninja_rmm', $sortBy, $sortDir, 'NinjaOne', $qp) ?>
                 </th>
-                <th class="text-body-secondary">
-                    <i class="bi bi-archive me-1 opacity-50"></i>
-                    <span class="opacity-50">Veeam</span>
-                    <span class="badge bg-secondary ms-1" style="font-size:.65rem">bientôt</span>
+                <th>
+                    <i class="bi bi-server me-1 text-danger"></i>
+                    <?= licSortLink('ik_count', $sortBy, $sortDir, 'Infomaniak', $qp) ?>
                 </th>
             </tr>
         </thead>
         <tbody>
             <?php if (empty($clients)): ?>
             <tr>
-                <td colspan="9" class="text-center text-body-secondary py-5">
+                <td colspan="10" class="text-center text-body-secondary py-5">
                     <i class="bi bi-grid-3x3 fs-1 d-block mb-2 opacity-25"></i>
                     Aucun client trouvé.
                 </td>
@@ -223,8 +223,10 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                 $ninjaVmm    = (int)($client['ninja_vmm']   ?? 0);
                 $ninjaCloud  = (int)($client['ninja_cloud'] ?? 0);
                 $ninjaTot    = $ninjaRmm + $ninjaNms + $ninjaMdm;
-                $detailId    = 'detail-' . $client['id'];
+                $ikCount       = (int)($client['ik_product_count'] ?? 0);
+                $detailId      = 'detail-' . $client['id'];
                 $clientDetails = $esetDetails[$client['id']] ?? [];
+                $ikProducts    = $ikDetails[$client['id']] ?? [];
             ?>
             <!-- Ligne résumé -->
             <tr class="align-middle"
@@ -310,141 +312,126 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                         <span class="text-body-secondary" style="font-size:.78rem;opacity:.6">· non mappé</span>
                     <?php endif; ?>
                 </td>
-                <td class="text-body-secondary small">—</td>
+                <td>
+                    <?php if ($ikCount > 0): ?>
+                        <span class="badge bg-secondary"><?= $ikCount ?> produit<?= $ikCount > 1 ? 's' : '' ?></span>
+                    <?php else: ?>
+                        <span class="text-body-secondary" style="font-size:.78rem;opacity:.6">· non mappé</span>
+                    <?php endif; ?>
+                </td>
             </tr>
 
             <!-- Ligne détail (collapse) -->
             <tr class="collapse" id="<?= $detailId ?>">
-                <td colspan="9" class="p-0">
+                <td colspan="10" class="p-0">
                     <div class="px-4 py-3 border-start border-4 border-primary-subtle bg-body-secondary">
                         <div class="row g-3">
 
                             <!-- Bloc ESET -->
-                            <div class="col-md-5">
+                            <?php if ($esetMapped && !empty($clientDetails)): ?>
+                            <div class="col-12">
                                 <div class="d-flex align-items-center mb-2">
                                     <i class="bi bi-shield-lock text-success me-2"></i>
                                     <strong class="small">ESET</strong>
                                 </div>
-                                <?php if (!$esetMapped): ?>
-                                    <p class="text-body-secondary small mb-0">
-                                        <i class="bi bi-exclamation-circle me-1"></i>
-                                        Aucun mapping confirmé.
-                                        <a href="/mapping" class="small">Configurer le mapping</a>
-                                    </p>
-                                <?php elseif (empty($clientDetails)): ?>
-                                    <p class="text-body-secondary small mb-0">Aucune licence synchronisée.</p>
-                                <?php else: ?>
-                                    <table class="table table-sm mb-0" style="font-size:.8rem">
-                                        <thead class="table-dark">
-                                            <tr>
-                                                <th>Produit</th>
-                                                <th class="text-center">Lic</th>
-                                                <th>Machines</th>
-                                                <th></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                        <?php foreach ($clientDetails as $detail):
-                                            $dTotal   = (int)$detail['seats_total'];
-                                            $dUsed    = (int)$detail['seats_used'];
-                                            $dOver    = $dTotal > 0 && $dUsed > $dTotal;
-                                            $dKeys    = !empty($detail['license_keys'])  ? explode(',', $detail['license_keys'])  : [];
-                                            $dQtys    = !empty($detail['license_qtys'])  ? explode(',', $detail['license_qtys'])  : [];
-                                            $dUseds   = !empty($detail['license_useds']) ? explode(',', $detail['license_useds']) : [];
-                                        ?>
-                                            <tr <?= $dOver ? 'class="table-danger"' : '' ?>>
-                                                <td><?= htmlspecialchars($detail['product_name']) ?></td>
-                                                <td class="text-center"><?= (int)$detail['lic_count'] ?></td>
-                                                <td>
-                                                    <div class="d-flex align-items-center gap-2">
-                                                        <div class="progress flex-grow-1" style="height:5px;min-width:50px">
-                                                            <div class="progress-bar <?= $dOver ? 'bg-danger' : ($dUsed === $dTotal ? 'bg-success' : 'bg-primary') ?>"
-                                                                 style="width:100%"></div>
-                                                        </div>
-                                                        <?php if ($dOver): ?>
-                                                            <span class="fw-semibold text-danger" style="min-width:70px">
-                                                                <i class="bi bi-exclamation-triangle-fill me-1"></i><?= $dUsed ?>/<?= $dTotal ?>
-                                                            </span>
-                                                        <?php else: ?>
-                                                            <span class="text-body-secondary" style="min-width:55px"><?= $dUsed ?>/<?= $dTotal ?></span>
-                                                        <?php endif; ?>
+                                <table class="table table-sm mb-0" style="font-size:.8rem">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Produit</th>
+                                            <th class="text-center">Lic</th>
+                                            <th>Machines</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($clientDetails as $detail):
+                                        $dTotal   = (int)$detail['seats_total'];
+                                        $dUsed    = (int)$detail['seats_used'];
+                                        $dOver    = $dTotal > 0 && $dUsed > $dTotal;
+                                        $dKeys    = !empty($detail['license_keys'])  ? explode(',', $detail['license_keys'])  : [];
+                                        $dQtys    = !empty($detail['license_qtys'])  ? explode(',', $detail['license_qtys'])  : [];
+                                        $dUseds   = !empty($detail['license_useds']) ? explode(',', $detail['license_useds']) : [];
+                                    ?>
+                                        <tr <?= $dOver ? 'class="table-danger"' : '' ?>>
+                                            <td><?= htmlspecialchars($detail['product_name']) ?></td>
+                                            <td class="text-center"><?= (int)$detail['lic_count'] ?></td>
+                                            <td>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <div class="progress flex-grow-1" style="height:5px;min-width:50px">
+                                                        <div class="progress-bar <?= $dOver ? 'bg-danger' : ($dUsed === $dTotal ? 'bg-success' : 'bg-primary') ?>"
+                                                             style="width:100%"></div>
                                                     </div>
-                                                </td>
-                                                <td class="text-end">
-                                                    <?php foreach ($dKeys as $ki => $dKey):
-                                                        $kQty  = (int)($dQtys[$ki]  ?? 0);
-                                                        $kUsed = (int)($dUseds[$ki] ?? 0);
-                                                        $kFree = $kQty - $kUsed;
-                                                        $kOver = $kUsed > $kQty;
-                                                        $kFull = !$kOver && $kQty > 0 && $kUsed === $kQty;
-                                                    ?>
-                                                    <button class="btn btn-xs btn-outline-secondary py-0 px-1 btn-show-history"
-                                                            data-key="<?= htmlspecialchars($dKey) ?>"
-                                                            data-product="<?= htmlspecialchars($detail['product_name']) ?>"
-                                                            data-client="<?= htmlspecialchars($client['name']) ?>"
-                                                            data-company=""
-                                                            data-qty="<?= $kQty ?>"
-                                                            data-used="<?= $kUsed ?>"
-                                                            data-free="<?= $kFree ?>"
-                                                            data-over="<?= $kOver ? '1' : '0' ?>"
-                                                            data-full="<?= $kFull ? '1' : '0' ?>"
-                                                            title="Historique <?= htmlspecialchars($dKey) ?>"
-                                                            style="font-size:.7rem">
-                                                        <i class="bi bi-clock-history"></i>
-                                                        <?php if (count($dKeys) > 1): ?>
-                                                            <span class="font-monospace" style="font-size:.65rem"><?= htmlspecialchars($dKey) ?></span>
-                                                        <?php endif; ?>
-                                                    </button>
-                                                    <?php endforeach; ?>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                <?php endif; ?>
+                                                    <?php if ($dOver): ?>
+                                                        <span class="fw-semibold text-danger" style="min-width:70px">
+                                                            <i class="bi bi-exclamation-triangle-fill me-1"></i><?= $dUsed ?>/<?= $dTotal ?>
+                                                        </span>
+                                                    <?php else: ?>
+                                                        <span class="text-body-secondary" style="min-width:55px"><?= $dUsed ?>/<?= $dTotal ?></span>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </td>
+                                            <td class="text-end">
+                                                <?php foreach ($dKeys as $ki => $dKey):
+                                                    $kQty  = (int)($dQtys[$ki]  ?? 0);
+                                                    $kUsed = (int)($dUseds[$ki] ?? 0);
+                                                    $kFree = $kQty - $kUsed;
+                                                    $kOver = $kUsed > $kQty;
+                                                    $kFull = !$kOver && $kQty > 0 && $kUsed === $kQty;
+                                                ?>
+                                                <button class="btn btn-xs btn-outline-secondary py-0 px-1 btn-show-history"
+                                                        data-key="<?= htmlspecialchars($dKey) ?>"
+                                                        data-product="<?= htmlspecialchars($detail['product_name']) ?>"
+                                                        data-client="<?= htmlspecialchars($client['name']) ?>"
+                                                        data-company=""
+                                                        data-qty="<?= $kQty ?>"
+                                                        data-used="<?= $kUsed ?>"
+                                                        data-free="<?= $kFree ?>"
+                                                        data-over="<?= $kOver ? '1' : '0' ?>"
+                                                        data-full="<?= $kFull ? '1' : '0' ?>"
+                                                        title="Historique <?= htmlspecialchars($dKey) ?>"
+                                                        style="font-size:.7rem">
+                                                    <i class="bi bi-clock-history"></i>
+                                                    <?php if (count($dKeys) > 1): ?>
+                                                        <span class="font-monospace" style="font-size:.65rem"><?= htmlspecialchars($dKey) ?></span>
+                                                    <?php endif; ?>
+                                                </button>
+                                                <?php endforeach; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
                             </div>
+                            <?php endif; ?>
 
                             <!-- Bloc Be-Cloud -->
-                            <div class="col-md-3">
+                            <?php if ($bcCount > 0): ?>
+                            <div class="col-12">
                                 <div class="d-flex align-items-center mb-2">
                                     <i class="bi bi-cloud-check text-info me-2"></i>
                                     <strong class="small">Be-Cloud</strong>
+                                    <span class="badge bg-secondary ms-2"><?= $bcCount ?> abonnement<?= $bcCount > 1 ? 's' : '' ?></span>
+                                    <?php if ($bcOver): ?>
+                                        <span class="badge bg-danger ms-1">
+                                            <i class="bi bi-exclamation-triangle-fill me-1"></i><?= $bcUsed ?>/<?= $bcTotal ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="text-body-secondary small ms-2"><?= $bcUsed ?>/<?= $bcTotal ?> assignés</span>
+                                    <?php endif; ?>
                                 </div>
-                                <?php if ($bcCount > 0): ?>
-                                    <div class="small text-body-secondary">
-                                        <span class="badge bg-secondary me-1"><?= $bcCount ?> abonnement(s)</span>
-                                        <?php if ($bcOver): ?>
-                                            <span class="fw-semibold text-danger">
-                                                <i class="bi bi-exclamation-triangle-fill me-1"></i><?= $bcUsed ?>/<?= $bcTotal ?>
-                                            </span>
-                                        <?php else: ?>
-                                            <?= $bcUsed ?>/<?= $bcTotal ?> assignés
-                                        <?php endif; ?>
-                                        <div class="progress mt-1" style="height:4px;max-width:80px">
-                                            <div class="progress-bar <?= $bcOver ? 'bg-danger' : 'bg-info' ?>"
-                                                 style="width:100%"></div>
-                                        </div>
-                                    </div>
-                                    <a href="/becloud/licenses?search=<?= urlencode($client['name']) ?>" class="small">
-                                        Voir les abonnements
-                                    </a>
-                                <?php else: ?>
-                                    <p class="text-body-secondary small mb-0">
-                                        <i class="bi bi-exclamation-circle me-1"></i>
-                                        Aucun mapping confirmé.
-                                        <a href="/mapping?provider=becloud" class="small">Configurer</a>
-                                    </p>
-                                <?php endif; ?>
+                                <a href="/becloud/licenses?search=<?= urlencode($client['name']) ?>" class="small">
+                                    <i class="bi bi-box-arrow-up-right me-1"></i>Voir les abonnements
+                                </a>
                             </div>
+                            <?php endif; ?>
 
                             <!-- Bloc NinjaOne -->
-                            <div class="col-md-3">
+                            <?php if ($ninjaTot > 0 || $ninjaVmm > 0 || $ninjaCloud > 0): ?>
+                            <div class="col-12">
                                 <div class="d-flex align-items-center mb-2">
                                     <i class="bi bi-hdd-network text-warning me-2"></i>
                                     <strong class="small">NinjaOne</strong>
-                                </div>
-                                <?php if ($ninjaTot > 0 || $ninjaVmm > 0 || $ninjaCloud > 0): ?>
-                                    <div class="d-flex flex-wrap gap-1 mb-1">
+                                    <div class="d-flex flex-wrap gap-1 ms-2">
                                         <?php if ($ninjaRmm > 0): ?>
                                         <span class="badge bg-success"><?= $ninjaRmm ?> RMM</span>
                                         <?php endif; ?>
@@ -461,17 +448,73 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                                         <span class="badge bg-secondary" title="no license"><?= $ninjaCloud ?> Cloud</span>
                                         <?php endif; ?>
                                     </div>
-                                    <a href="/ninjaone/devices?client_id=<?= $client['id'] ?>" class="small">
-                                        <i class="bi bi-hdd-network me-1"></i>Voir les équipements
-                                    </a>
-                                <?php else: ?>
-                                    <p class="text-body-secondary small mb-0">
-                                        <i class="bi bi-exclamation-circle me-1"></i>
-                                        Aucun mapping confirmé.
-                                        <a href="/mapping?provider=ninjaone" class="small">Configurer</a>
-                                    </p>
-                                <?php endif; ?>
+                                </div>
+                                <a href="/ninjaone/devices?client_id=<?= $client['id'] ?>" class="small">
+                                    <i class="bi bi-hdd-network me-1"></i>Voir les équipements
+                                </a>
                             </div>
+                            <?php endif; ?>
+
+                            <!-- Bloc Infomaniak -->
+                            <?php if (!empty($ikProducts)):
+                                $nowTs    = time();
+                                $in30Days = $nowTs + 30 * 86400;
+                            ?>
+                            <div class="col-12">
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-server text-danger me-2"></i>
+                                        <strong class="small">Infomaniak</strong>
+                                        <span class="badge bg-secondary ms-2"><?= $ikCount ?> produit<?= $ikCount > 1 ? 's' : '' ?></span>
+                                    </div>
+                                    <a href="/infomaniak/client/<?= $client['id'] ?>" class="small text-decoration-none">
+                                        <i class="bi bi-box-arrow-up-right me-1"></i>Détail
+                                    </a>
+                                </div>
+                                <table class="table table-sm mb-0" style="font-size:.8rem">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Service</th>
+                                            <th>Produit</th>
+                                            <th>Nom client</th>
+                                            <th class="text-center">Expiration</th>
+                                            <th class="text-center">Statut</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($ikProducts as $ikp):
+                                        $exp       = $ikp['expired_at'] ? (int)$ikp['expired_at'] : null;
+                                        $ikExpired = $exp && $exp < $nowTs;
+                                        $ikSoon    = $exp && !$ikExpired && $exp <= $in30Days;
+                                    ?>
+                                        <tr <?= $ikExpired ? 'class="table-danger"' : ($ikSoon ? 'class="table-warning"' : '') ?>>
+                                            <td><span class="badge bg-secondary"><?= htmlspecialchars($ikp['service_name'] ?? '—') ?></span></td>
+                                            <td><?= htmlspecialchars($ikp['internal_name'] ?? '—') ?></td>
+                                            <td class="text-body-secondary"><?= htmlspecialchars($ikp['customer_name'] ?? '—') ?></td>
+                                            <td class="text-center <?= $ikExpired ? 'text-danger fw-bold' : ($ikSoon ? 'text-warning fw-bold' : '') ?>">
+                                                <?= $exp ? date('d/m/Y', $exp) : '—' ?>
+                                            </td>
+                                            <td class="text-center">
+                                                <?php if ($ikExpired): ?>
+                                                    <span class="badge bg-danger" style="font-size:.65rem">Expiré</span>
+                                                <?php elseif ($ikSoon): ?>
+                                                    <span class="badge bg-warning text-dark" style="font-size:.65rem">Bientôt</span>
+                                                <?php else: ?>
+                                                    <span class="badge bg-success" style="font-size:.65rem">Actif</span>
+                                                <?php endif; ?>
+                                                <?php if ($ikp['is_trial']): ?>
+                                                    <span class="badge bg-info" style="font-size:.65rem">Essai</span>
+                                                <?php endif; ?>
+                                                <?php if ($ikp['is_free']): ?>
+                                                    <span class="badge bg-secondary" style="font-size:.65rem">Gratuit</span>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <?php endif; ?>
 
                         </div>
                     </div>

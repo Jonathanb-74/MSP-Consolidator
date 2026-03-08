@@ -447,6 +447,73 @@ $dateStr  = $now->format('d/m/Y à H:i');
     <?php endif; ?>
 </div>
 
+<!-- ══ Infomaniak ══ -->
+<div class="section">
+    <div class="section-header">
+        <div class="section-header-left">Hébergement & Services — Infomaniak</div>
+        <div class="section-header-right">
+            <?php if (!empty($infomaniakDetail)): ?>
+            <?= count($infomaniakDetail) ?> produit(s)
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <?php if (empty($infomaniakDetail)): ?>
+    <div class="empty-msg">Aucun produit Infomaniak synchronisé pour ce client.</div>
+    <?php else: ?>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Compte</th>
+                <th>Service</th>
+                <th>Produit / Nom interne</th>
+                <th>Nom client produit</th>
+                <th class="text-center">Expiration</th>
+                <th class="text-center">Statut</th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php foreach ($infomaniakDetail as $row):
+            $expiredAt  = $row['expired_at'] ? (int)$row['expired_at'] : null;
+            $isExpired  = $expiredAt && $expiredAt < time();
+            $isSoon     = $expiredAt && !$isExpired && $expiredAt < (time() + 30 * 86400);
+        ?>
+        <tr <?= $isExpired ? 'class="row-danger"' : '' ?>>
+            <td><?= htmlspecialchars($row['account_name']) ?></td>
+            <td><?= htmlspecialchars($row['service_name'] ?? '—') ?></td>
+            <td><?= htmlspecialchars($row['internal_name'] ?? '—') ?></td>
+            <td style="color:#64748b"><?= htmlspecialchars($row['customer_name'] ?? '—') ?></td>
+            <td class="text-center">
+                <?php if ($expiredAt): ?>
+                    <span class="badge <?= $isExpired ? 'badge-danger' : ($isSoon ? 'badge-warning' : 'badge-grey') ?>">
+                        <?= date('d/m/Y', $expiredAt) ?>
+                    </span>
+                <?php else: ?>
+                    —
+                <?php endif; ?>
+            </td>
+            <td class="text-center">
+                <?php if ($isExpired): ?>
+                    <span class="badge badge-danger">Expiré</span>
+                <?php elseif ($isSoon): ?>
+                    <span class="badge badge-warning">Bientôt</span>
+                <?php else: ?>
+                    <span class="badge badge-success">Actif</span>
+                <?php endif; ?>
+                <?php if ($row['is_trial']): ?>
+                    <span class="badge badge-info">Essai</span>
+                <?php endif; ?>
+                <?php if ($row['is_free']): ?>
+                    <span class="badge badge-grey">Gratuit</span>
+                <?php endif; ?>
+            </td>
+        </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
+</div>
+
 <!-- ══ Pied de page ══ -->
 <div class="doc-footer">
     Document généré le <?= htmlspecialchars($dateStr) ?> via MSP Consolidator &nbsp;·&nbsp;

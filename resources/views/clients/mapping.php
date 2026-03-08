@@ -22,9 +22,10 @@ function mSortLink(string $col, string $cur, string $dir, string $label, array $
 $qp = ['provider' => $provider, 'search' => $search, 'confirmed' => $confirmed, 'perPage' => $perPage];
 
 $providerTabs = [
-    'eset'     => ['label' => 'ESET',     'icon' => 'bi-shield-lock', 'color' => 'text-success'],
-    'becloud'  => ['label' => 'Be-Cloud', 'icon' => 'bi-cloud-check', 'color' => 'text-info'],
-    'ninjaone' => ['label' => 'NinjaOne', 'icon' => 'bi-hdd-network', 'color' => 'text-warning'],
+    'eset'       => ['label' => 'ESET',       'icon' => 'bi-shield-lock', 'color' => 'text-success'],
+    'becloud'    => ['label' => 'Be-Cloud',   'icon' => 'bi-cloud-check', 'color' => 'text-info'],
+    'ninjaone'   => ['label' => 'NinjaOne',   'icon' => 'bi-hdd-network', 'color' => 'text-warning'],
+    'infomaniak' => ['label' => 'Infomaniak', 'icon' => 'bi-server',      'color' => 'text-danger'],
 ];
 
 $isUnmappedTab = ($confirmed === '0');

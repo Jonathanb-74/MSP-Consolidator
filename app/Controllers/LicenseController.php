@@ -39,11 +39,11 @@ class LicenseController extends Controller
         // Fournisseurs : multi-sélection (providers[]=eset&providers[]=becloud) + compat provider=
         $providerFilters = array_values(array_intersect(
             (array)($_GET['providers'] ?? []),
-            ['eset', 'becloud', 'ninjaone']
+            ['eset', 'becloud', 'ninjaone', 'infomaniak']
         ));
         if (empty($providerFilters) && !empty($_GET['provider'])) {
             $pv = $_GET['provider'];
-            if (in_array($pv, ['eset', 'becloud', 'ninjaone'])) {
+            if (in_array($pv, ['eset', 'becloud', 'ninjaone', 'infomaniak'])) {
                 $providerFilters = [$pv];
             }
         }
@@ -57,6 +57,7 @@ class LicenseController extends Controller
             'ninja_rmm'     => 'ninja_rmm',
             'ninja_nms'     => 'ninja_nms',
             'ninja_mdm'     => 'ninja_mdm',
+            'ik_count'      => 'ik_product_count',
         ];
         $orderCol = $allowedSorts[$sortBy] ?? 'c.name';
 
@@ -66,6 +67,7 @@ class LicenseController extends Controller
         // Joins toujours LEFT (le filtrage se fait via HAVING)
         $bcJoinSql    = $this->bcJoin();
         $ninjaJoinSql = $this->ninjaJoin();
+        $ikJoinSql    = $this->ikJoin();
 
         // Count via sous-requête pour réutiliser la même logique
         $total = $this->db->count(
@@ -81,6 +83,7 @@ class LicenseController extends Controller
                 LEFT JOIN eset_licenses el  ON el.eset_company_id = ec.eset_company_id
                 {$bcJoinSql}
                 {$ninjaJoinSql}
+                {$ikJoinSql}
                 $whereSql
                 GROUP BY c.id
                 $havingSql
@@ -108,7 +111,9 @@ class LicenseController extends Controller
                 COALESCE(ninja_agg.ninja_nms,   0)                         AS ninja_nms,
                 COALESCE(ninja_agg.ninja_mdm,   0)                         AS ninja_mdm,
                 COALESCE(ninja_agg.ninja_vmm,   0)                         AS ninja_vmm,
-                COALESCE(ninja_agg.ninja_cloud, 0)                         AS ninja_cloud
+                COALESCE(ninja_agg.ninja_cloud, 0)                         AS ninja_cloud,
+                COALESCE(ik_agg.ik_product_count, 0)                       AS ik_product_count,
+                COALESCE(ik_agg.ik_account_count, 0)                       AS ik_account_count
              FROM clients c
              LEFT JOIN client_tags ct ON ct.client_id = c.id
              LEFT JOIN client_provider_mappings cpm
@@ -119,6 +124,7 @@ class LicenseController extends Controller
              LEFT JOIN eset_licenses el  ON el.eset_company_id = ec.eset_company_id
              {$bcJoinSql}
              {$ninjaJoinSql}
+             {$ikJoinSql}
              $whereSql
              GROUP BY c.id
              $havingSql
@@ -154,6 +160,32 @@ class LicenseController extends Controller
             $esetDetails[$row['client_id']][] = $row;
         }
 
+        // Détail Infomaniak par produit, indexé par client_id
+        $ikDetailsRaw = $this->db->fetchAll(
+            "SELECT cpm4.client_id,
+                    ip.service_name,
+                    ip.internal_name,
+                    ip.customer_name,
+                    ip.expired_at,
+                    ip.is_trial,
+                    ip.is_free
+             FROM client_provider_mappings cpm4
+             JOIN providers pr ON pr.id = cpm4.provider_id AND pr.code = 'infomaniak'
+             JOIN infomaniak_accounts ia
+                  ON CAST(ia.infomaniak_account_id AS CHAR) COLLATE utf8mb4_general_ci = cpm4.provider_client_id
+                  AND ia.connection_id = cpm4.connection_id
+             JOIN infomaniak_products ip
+                  ON ip.infomaniak_account_id = ia.infomaniak_account_id
+                  AND ip.connection_id = ia.connection_id
+             WHERE cpm4.is_confirmed = 1
+             ORDER BY cpm4.client_id, ip.service_name, ip.internal_name"
+        );
+
+        $ikDetails = [];
+        foreach ($ikDetailsRaw as $row) {
+            $ikDetails[$row['client_id']][] = $row;
+        }
+
         $allTags = $this->db->fetchAll(
             "SELECT * FROM tags ORDER BY display_order ASC, name ASC"
         );
@@ -163,6 +195,7 @@ class LicenseController extends Controller
             'breadcrumbs'     => ['Dashboard' => '/', 'Récap Licences' => null],
             'clients'         => $clients,
             'esetDetails'     => $esetDetails,
+            'ikDetails'       => $ikDetails,
             'total'           => $total,
             'page'            => $page,
             'perPage'         => $perPage,
@@ -250,6 +283,28 @@ class LicenseController extends Controller
             [$clientId]
         );
 
+        $infomaniakDetail = $this->db->fetchAll(
+            "SELECT ia.name AS account_name,
+                    ip.service_name,
+                    ip.internal_name,
+                    ip.customer_name,
+                    ip.expired_at,
+                    ip.is_trial,
+                    ip.is_free
+             FROM client_provider_mappings cpm
+             JOIN infomaniak_accounts ia
+                  ON CAST(ia.infomaniak_account_id AS CHAR) COLLATE utf8mb4_general_ci = cpm.provider_client_id
+                  AND ia.connection_id = cpm.connection_id
+             JOIN infomaniak_products ip
+                  ON ip.infomaniak_account_id = ia.infomaniak_account_id
+                  AND ip.connection_id = ia.connection_id
+             WHERE cpm.client_id = ?
+               AND cpm.is_confirmed = 1
+               AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'infomaniak' LIMIT 1)
+             ORDER BY ip.service_name, ip.internal_name",
+            [$clientId]
+        );
+
         // Rendu du template HTML
         ob_start();
         include APP_ROOT . '/resources/views/licenses/report.php';
@@ -316,6 +371,9 @@ class LicenseController extends Controller
         if (in_array('ninjaone', $providerFilters)) {
             $parts[] = '(COALESCE(MAX(ninja_agg.ninja_rmm), 0) + COALESCE(MAX(ninja_agg.ninja_nms), 0) + COALESCE(MAX(ninja_agg.ninja_mdm), 0)) > 0';
         }
+        if (in_array('infomaniak', $providerFilters)) {
+            $parts[] = 'COALESCE(MAX(ik_agg.ik_product_count), 0) > 0';
+        }
 
         $havingParts = [];
 
@@ -331,6 +389,7 @@ class LicenseController extends Controller
                 COUNT(DISTINCT el.id) > 0
                 OR COALESCE(MAX(bc_agg.bc_sub_count), 0) > 0
                 OR (COALESCE(MAX(ninja_agg.ninja_rmm), 0) + COALESCE(MAX(ninja_agg.ninja_nms), 0) + COALESCE(MAX(ninja_agg.ninja_mdm), 0)) > 0
+                OR COALESCE(MAX(ik_agg.ik_product_count), 0) > 0
             )';
         }
 
@@ -370,5 +429,23 @@ class LicenseController extends Controller
                  AND cpm3.is_confirmed = 1
             GROUP BY cpm3.client_id
         ) ninja_agg ON ninja_agg.client_id = c.id";
+    }
+
+    private function ikJoin(): string
+    {
+        return "LEFT JOIN (
+            SELECT cpm4.client_id,
+                   COUNT(DISTINCT ip.id)    AS ik_product_count,
+                   COUNT(DISTINCT ia.id)    AS ik_account_count
+            FROM infomaniak_accounts ia
+            JOIN infomaniak_products ip
+                 ON ip.infomaniak_account_id = ia.infomaniak_account_id
+                 AND ip.connection_id = ia.connection_id
+            JOIN client_provider_mappings cpm4
+                 ON cpm4.provider_client_id = CAST(ia.infomaniak_account_id AS CHAR) COLLATE utf8mb4_general_ci
+                 AND cpm4.connection_id = ia.connection_id
+                 AND cpm4.is_confirmed = 1
+            GROUP BY cpm4.client_id
+        ) ik_agg ON ik_agg.client_id = c.id";
     }
 }

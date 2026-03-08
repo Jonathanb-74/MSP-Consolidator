@@ -59,6 +59,14 @@ class MappingController extends Controller
                              ON cpm.provider_client_id = ent.be_cloud_customer_id
                              AND cpm.connection_id = ent.connection_id
                              AND cpm.provider_id = $pid";
+        } elseif ($provider === 'infomaniak') {
+            $entityTable  = 'infomaniak_accounts ent';
+            $entityIdExpr = 'CAST(ent.infomaniak_account_id AS CHAR) COLLATE utf8mb4_general_ci';
+            $connExpr     = 'ent.connection_id';
+            $cpmJoin      = "LEFT JOIN client_provider_mappings cpm
+                             ON cpm.provider_client_id = CAST(ent.infomaniak_account_id AS CHAR) COLLATE utf8mb4_general_ci
+                             AND cpm.connection_id = ent.connection_id
+                             AND cpm.provider_id = $pid";
         } else {
             $entityTable  = 'eset_companies ent';
             $entityIdExpr = 'ent.eset_company_id';
@@ -266,6 +274,14 @@ class MappingController extends Controller
         if ($providerCode === 'ninjaone') {
             $row = $this->db->fetchOne(
                 "SELECT name, connection_id FROM ninjaone_organizations WHERE ninjaone_org_id = ? LIMIT 1",
+                [(int)$providerClientId]
+            );
+            return is_array($row) ? [$row['name'], (int)$row['connection_id']] : [null, null];
+        }
+
+        if ($providerCode === 'infomaniak') {
+            $row = $this->db->fetchOne(
+                "SELECT name, connection_id FROM infomaniak_accounts WHERE infomaniak_account_id = ? LIMIT 1",
                 [(int)$providerClientId]
             );
             return is_array($row) ? [$row['name'], (int)$row['connection_id']] : [null, null];

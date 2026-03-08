@@ -33,6 +33,7 @@ use App\Controllers\SettingsController;
 use App\Modules\Eset\EsetController;
 use App\Modules\BeCloud\BeCloudController;
 use App\Modules\NinjaOne\NinjaOneController;
+use App\Modules\Infomaniak\InformaniakController;
 
 $router = new Router();
 
@@ -89,6 +90,14 @@ $router->get('/ninjaone/sync-logs',    [NinjaOneController::class, 'syncLogs']);
 $router->post('/ninjaone/sync',        [NinjaOneController::class, 'sync']);
 $router->post('/ninjaone/sync-cancel', [NinjaOneController::class, 'syncCancel']);
 $router->get('/ninjaone/sync-status',  [NinjaOneController::class, 'syncStatus']);
+
+// Infomaniak
+$router->get('/infomaniak/licenses',     [InformaniakController::class, 'licenses']);
+$router->get('/infomaniak/sync-logs',    [InformaniakController::class, 'syncLogs']);
+$router->post('/infomaniak/sync',        [InformaniakController::class, 'sync']);
+$router->post('/infomaniak/sync-cancel', [InformaniakController::class, 'syncCancel']);
+$router->get('/infomaniak/sync-status',  [InformaniakController::class, 'syncStatus']);
+$router->get('/infomaniak/client/{id}',  [InformaniakController::class, 'clientProducts']);
 
 // Paramètres
 $router->get('/settings/connections',                  [SettingsController::class, 'connections']);
