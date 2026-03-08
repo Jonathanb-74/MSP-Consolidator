@@ -19,15 +19,32 @@ class LicenseController extends Controller
      */
     public function index(array $params = []): void
     {
-        $search         = trim($_GET['search'] ?? '');
-        $tagId          = (int)($_GET['tag'] ?? 0);
-        $providerFilter = $_GET['provider'] ?? '';   // '', 'eset'
-        $sortBy         = $_GET['sort'] ?? 'name';
-        $sortDir        = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
-        $page           = max(1, (int)($_GET['page'] ?? 1));
+        $search  = trim($_GET['search'] ?? '');
+        $sortBy  = $_GET['sort'] ?? 'name';
+        $sortDir = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
+        $page    = max(1, (int)($_GET['page'] ?? 1));
         $_pp     = (int)($_GET['perPage'] ?? 50);
         $perPage = in_array($_pp, [25, 50, 100, 250]) ? $_pp : 50;
-        $offset         = ($page - 1) * $perPage;
+        $offset  = ($page - 1) * $perPage;
+        $showAll = isset($_GET['show_all']) && $_GET['show_all'] === '1';
+
+        // Tags : multi-sélection (tags[]=1&tags[]=2) + compat ancien param tag=
+        $tagIds = array_values(array_unique(array_filter(array_map('intval', (array)($_GET['tags'] ?? [])))));
+        if (empty($tagIds) && isset($_GET['tag']) && (int)$_GET['tag'] > 0) {
+            $tagIds = [(int)$_GET['tag']];
+        }
+
+        // Fournisseurs : multi-sélection (providers[]=eset&providers[]=becloud) + compat provider=
+        $providerFilters = array_values(array_intersect(
+            (array)($_GET['providers'] ?? []),
+            ['eset', 'becloud', 'ninjaone']
+        ));
+        if (empty($providerFilters) && !empty($_GET['provider'])) {
+            $pv = $_GET['provider'];
+            if (in_array($pv, ['eset', 'becloud', 'ninjaone'])) {
+                $providerFilters = [$pv];
+            }
+        }
 
         $allowedSorts = [
             'name'          => 'c.name',
@@ -41,79 +58,33 @@ class LicenseController extends Controller
         ];
         $orderCol = $allowedSorts[$sortBy] ?? 'c.name';
 
-        // Pour becloud/ninjaone : filtre via INNER JOIN plutôt que HAVING (HAVING sur tables dérivées
-        // échoue avec ONLY_FULL_GROUP_BY). Pour eset : agrégat COUNT() = OK en HAVING.
-        $bcJoinType       = ($providerFilter === 'becloud')  ? 'JOIN' : 'LEFT JOIN';
-        $ninjaJoinType    = ($providerFilter === 'ninjaone') ? 'JOIN' : 'LEFT JOIN';
-        $ninjaInnerHaving = ($providerFilter === 'ninjaone')
-            ? 'HAVING (SUM(no2.rmm_count) + SUM(no2.nms_count) + SUM(no2.mdm_count)) > 0'
-            : '';
-        $havingSql = ($providerFilter === 'eset') ? 'HAVING COUNT(DISTINCT el.id) > 0' : '';
+        [$whereSql, $whereParams] = $this->buildWhere($search, $tagIds);
+        $havingSql = $this->buildHaving($providerFilters, $showAll);
 
-        [$whereSql, $whereParams] = $this->buildWhere($search, $tagId);
+        // Joins toujours LEFT (le filtrage se fait via HAVING)
+        $bcJoinSql    = $this->bcJoin();
+        $ninjaJoinSql = $this->ninjaJoin();
 
-        // Count : requête dédiée par fournisseur (évite les colonnes inconnues en HAVING)
-        if ($providerFilter === 'eset') {
-            $total = $this->db->count(
-                "SELECT COUNT(*) FROM (
-                    SELECT c.id
-                    FROM clients c
-                    LEFT JOIN client_tags ct ON ct.client_id = c.id
-                    LEFT JOIN client_provider_mappings cpm
-                        ON cpm.client_id = c.id
-                        AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'eset' LIMIT 1)
-                        AND cpm.is_confirmed = 1
-                    LEFT JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
-                    LEFT JOIN eset_licenses el  ON el.eset_company_id = ec.eset_company_id
-                    $whereSql
-                    GROUP BY c.id
-                    HAVING COUNT(DISTINCT el.id) > 0
-                ) sub",
-                $whereParams
-            );
-        } elseif ($providerFilter === 'becloud') {
-            $total = $this->db->count(
-                "SELECT COUNT(*) FROM (
-                    SELECT c.id
-                    FROM clients c
-                    LEFT JOIN client_tags ct ON ct.client_id = c.id
-                    JOIN client_provider_mappings cpm2
-                        ON cpm2.client_id = c.id AND cpm2.is_confirmed = 1
-                    JOIN be_cloud_customers bcc
-                        ON bcc.be_cloud_customer_id = cpm2.provider_client_id
-                        AND bcc.connection_id = cpm2.connection_id
-                    JOIN be_cloud_subscriptions bs ON bs.be_cloud_customer_id = bcc.be_cloud_customer_id
-                    $whereSql
-                    GROUP BY c.id
-                ) sub",
-                $whereParams
-            );
-        } elseif ($providerFilter === 'ninjaone') {
-            $total = $this->db->count(
-                "SELECT COUNT(*) FROM (
-                    SELECT c.id
-                    FROM clients c
-                    LEFT JOIN client_tags ct ON ct.client_id = c.id
-                    JOIN client_provider_mappings cpm3
-                        ON cpm3.client_id = c.id AND cpm3.is_confirmed = 1
-                    JOIN ninjaone_organizations no2
-                        ON CAST(no2.ninjaone_org_id AS CHAR) COLLATE utf8mb4_general_ci = cpm3.provider_client_id
-                        AND no2.connection_id = cpm3.connection_id
-                        AND (no2.rmm_count + no2.nms_count + no2.mdm_count) > 0
-                    $whereSql
-                    GROUP BY c.id
-                ) sub",
-                $whereParams
-            );
-        } else {
-            $total = $this->db->count(
-                "SELECT COUNT(DISTINCT c.id)
-                 FROM clients c
-                 LEFT JOIN client_tags ct ON ct.client_id = c.id
-                 $whereSql",
-                $whereParams
-            );
-        }
+        // Count via sous-requête pour réutiliser la même logique
+        $total = $this->db->count(
+            "SELECT COUNT(*) FROM (
+                SELECT c.id
+                FROM clients c
+                LEFT JOIN client_tags ct ON ct.client_id = c.id
+                LEFT JOIN client_provider_mappings cpm
+                    ON cpm.client_id = c.id
+                    AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'eset' LIMIT 1)
+                    AND cpm.is_confirmed = 1
+                LEFT JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
+                LEFT JOIN eset_licenses el  ON el.eset_company_id = ec.eset_company_id
+                {$bcJoinSql}
+                {$ninjaJoinSql}
+                $whereSql
+                GROUP BY c.id
+                $havingSql
+            ) sub",
+            $whereParams
+        );
 
         $clients = $this->db->fetchAll(
             "SELECT
@@ -144,34 +115,8 @@ class LicenseController extends Controller
                 AND cpm.is_confirmed = 1
              LEFT JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
              LEFT JOIN eset_licenses el  ON el.eset_company_id = ec.eset_company_id
-             $bcJoinType (
-                SELECT cpm2.client_id,
-                       COUNT(DISTINCT bs.id)       AS bc_sub_count,
-                       SUM(bs.quantity)             AS bc_seats_total,
-                       SUM(bs.assigned_licenses)    AS bc_seats_used
-                FROM be_cloud_subscriptions bs
-                JOIN be_cloud_customers bc ON bc.be_cloud_customer_id = bs.be_cloud_customer_id
-                JOIN client_provider_mappings cpm2
-                     ON cpm2.connection_id = bc.connection_id
-                     AND cpm2.provider_client_id = bc.be_cloud_customer_id
-                     AND cpm2.is_confirmed = 1
-                GROUP BY cpm2.client_id
-             ) bc_agg ON bc_agg.client_id = c.id
-             $ninjaJoinType (
-                SELECT cpm3.client_id,
-                       SUM(no2.rmm_count)   AS ninja_rmm,
-                       SUM(no2.nms_count)   AS ninja_nms,
-                       SUM(no2.mdm_count)   AS ninja_mdm,
-                       SUM(no2.vmm_count)   AS ninja_vmm,
-                       SUM(no2.cloud_count) AS ninja_cloud
-                FROM ninjaone_organizations no2
-                JOIN client_provider_mappings cpm3
-                     ON cpm3.provider_client_id = CAST(no2.ninjaone_org_id AS CHAR) COLLATE utf8mb4_general_ci
-                     AND cpm3.connection_id = no2.connection_id
-                     AND cpm3.is_confirmed = 1
-                GROUP BY cpm3.client_id
-                $ninjaInnerHaving
-             ) ninja_agg ON ninja_agg.client_id = c.id
+             {$bcJoinSql}
+             {$ninjaJoinSql}
              $whereSql
              GROUP BY c.id
              $havingSql
@@ -187,7 +132,10 @@ class LicenseController extends Controller
                 COALESCE(el.product_name, 'Sans produit') AS product_name,
                 SUM(el.quantity)    AS seats_total,
                 SUM(el.usage_count) AS seats_used,
-                COUNT(el.id)        AS lic_count
+                COUNT(el.id)        AS lic_count,
+                GROUP_CONCAT(el.public_license_key ORDER BY el.public_license_key SEPARATOR ',') AS license_keys,
+                GROUP_CONCAT(el.quantity           ORDER BY el.public_license_key SEPARATOR ',') AS license_qtys,
+                GROUP_CONCAT(el.usage_count        ORDER BY el.public_license_key SEPARATOR ',') AS license_useds
              FROM clients c
              JOIN client_provider_mappings cpm
                 ON cpm.client_id = c.id
@@ -209,44 +157,114 @@ class LicenseController extends Controller
         );
 
         $this->render('licenses/index', [
-            'pageTitle'   => 'Récap Licences',
-            'breadcrumbs' => ['Dashboard' => '/', 'Récap Licences' => null],
-            'clients'     => $clients,
-            'esetDetails' => $esetDetails,
-            'total'       => $total,
-            'page'        => $page,
-            'perPage'     => $perPage,
-            'search'      => $search,
-            'tagId'       => $tagId,
-            'allTags'     => $allTags,
-            'sortBy'         => $sortBy,
-            'sortDir'        => $sortDir,
-            'providerFilter' => $providerFilter,
-            'bcDetails'      => [],
-            'ninjaDetails'   => [],
+            'pageTitle'       => 'Récap Licences',
+            'breadcrumbs'     => ['Dashboard' => '/', 'Récap Licences' => null],
+            'clients'         => $clients,
+            'esetDetails'     => $esetDetails,
+            'total'           => $total,
+            'page'            => $page,
+            'perPage'         => $perPage,
+            'search'          => $search,
+            'tagIds'          => $tagIds,
+            'providerFilters' => $providerFilters,
+            'showAll'         => $showAll,
+            'allTags'         => $allTags,
+            'sortBy'          => $sortBy,
+            'sortDir'         => $sortDir,
+            // Compat ancien code vue
+            'tagId'           => $tagIds[0] ?? 0,
+            'providerFilter'  => $providerFilters[0] ?? '',
         ]);
     }
 
     // ── Helpers ────────────────────────────────────────────────────
 
-    private function buildWhere(string $search, int $tagId): array
+    private function buildWhere(string $search, array $tagIds): array
     {
         $conditions = [];
         $params     = [];
 
         if ($search !== '') {
             $conditions[] = "(c.name LIKE ? OR c.client_number LIKE ?)";
-            $like = '%' . $search . '%';
-            $params = array_merge($params, [$like, $like]);
+            $like         = '%' . $search . '%';
+            $params[]     = $like;
+            $params[]     = $like;
         }
 
-        if ($tagId > 0) {
-            $conditions[] = "ct.tag_id = ?";
-            $params[]     = $tagId;
+        if (!empty($tagIds)) {
+            $placeholders = implode(',', array_fill(0, count($tagIds), '?'));
+            $conditions[] = "ct.tag_id IN ($placeholders)";
+            $params       = array_merge($params, $tagIds);
         }
 
-        $whereSql = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
+        $whereSql = $conditions ? 'WHERE c.is_active = 1 AND ' . implode(' AND ', $conditions) : 'WHERE c.is_active = 1';
 
         return [$whereSql, $params];
+    }
+
+    private function buildHaving(array $providerFilters, bool $showAll): string
+    {
+        // Colonnes des derived tables (bc_agg, ninja_agg) doivent être enveloppées dans MAX()
+        // pour satisfaire ONLY_FULL_GROUP_BY — équivalent ici car 1 row par client_id.
+        $parts = [];
+
+        if (in_array('eset', $providerFilters)) {
+            $parts[] = 'COUNT(DISTINCT el.id) > 0';
+        }
+        if (in_array('becloud', $providerFilters)) {
+            $parts[] = 'COALESCE(MAX(bc_agg.bc_sub_count), 0) > 0';
+        }
+        if (in_array('ninjaone', $providerFilters)) {
+            $parts[] = '(COALESCE(MAX(ninja_agg.ninja_rmm), 0) + COALESCE(MAX(ninja_agg.ninja_nms), 0) + COALESCE(MAX(ninja_agg.ninja_mdm), 0)) > 0';
+        }
+
+        if (!empty($parts)) {
+            return 'HAVING (' . implode(' OR ', $parts) . ')';
+        }
+
+        if (!$showAll) {
+            return 'HAVING (
+                COUNT(DISTINCT el.id) > 0
+                OR COALESCE(MAX(bc_agg.bc_sub_count), 0) > 0
+                OR (COALESCE(MAX(ninja_agg.ninja_rmm), 0) + COALESCE(MAX(ninja_agg.ninja_nms), 0) + COALESCE(MAX(ninja_agg.ninja_mdm), 0)) > 0
+            )';
+        }
+
+        return '';
+    }
+
+    private function bcJoin(): string
+    {
+        return "LEFT JOIN (
+            SELECT cpm2.client_id,
+                   COUNT(DISTINCT bs.id)    AS bc_sub_count,
+                   SUM(bs.quantity)          AS bc_seats_total,
+                   SUM(bs.assigned_licenses) AS bc_seats_used
+            FROM be_cloud_subscriptions bs
+            JOIN be_cloud_customers bc ON bc.be_cloud_customer_id = bs.be_cloud_customer_id
+            JOIN client_provider_mappings cpm2
+                 ON cpm2.connection_id = bc.connection_id
+                 AND cpm2.provider_client_id = bc.be_cloud_customer_id
+                 AND cpm2.is_confirmed = 1
+            GROUP BY cpm2.client_id
+        ) bc_agg ON bc_agg.client_id = c.id";
+    }
+
+    private function ninjaJoin(): string
+    {
+        return "LEFT JOIN (
+            SELECT cpm3.client_id,
+                   SUM(no2.rmm_count)   AS ninja_rmm,
+                   SUM(no2.nms_count)   AS ninja_nms,
+                   SUM(no2.mdm_count)   AS ninja_mdm,
+                   SUM(no2.vmm_count)   AS ninja_vmm,
+                   SUM(no2.cloud_count) AS ninja_cloud
+            FROM ninjaone_organizations no2
+            JOIN client_provider_mappings cpm3
+                 ON cpm3.provider_client_id = CAST(no2.ninjaone_org_id AS CHAR) COLLATE utf8mb4_general_ci
+                 AND cpm3.connection_id = no2.connection_id
+                 AND cpm3.is_confirmed = 1
+            GROUP BY cpm3.client_id
+        ) ninja_agg ON ninja_agg.client_id = c.id";
     }
 }

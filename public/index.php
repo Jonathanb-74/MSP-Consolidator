@@ -71,6 +71,8 @@ $router->post('/eset/sync',         [EsetController::class, 'sync']);
 $router->post('/eset/sync-cancel',  [EsetController::class, 'syncCancel']);
 $router->get('/eset/sync-status',   [EsetController::class, 'syncStatus']);
 $router->get('/eset/debug-license', [EsetController::class, 'debugLicense']);
+$router->get('/eset/debug-devices', [EsetController::class, 'debugDevices']);
+$router->get('/eset/debug-history', [EsetController::class, 'debugHistory']);
 
 // Be-Cloud
 $router->get('/becloud/licenses',     [BeCloudController::class, 'licenses']);

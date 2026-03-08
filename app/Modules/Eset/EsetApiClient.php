@@ -129,6 +129,119 @@ class EsetApiClient extends ApiClient
         ]);
     }
 
+    // ── Catalogue produits ─────────────────────────────────────────
+
+    /**
+     * Retourne la liste des produits disponibles (code → nom) + la réponse brute.
+     * Endpoint : GET /Enum/AvailableProducts
+     * Résultat mis en cache 24h dans storage/cache/.
+     *
+     * @return array{0: array<string,string>, 1: array}  [products_map, raw_response]
+     */
+    public function getAvailableProducts(): array
+    {
+        $appConfig = require dirname(__DIR__, 3) . '/config/app.php';
+        $cacheFile = $appConfig['cache_path'] . '/eset_products.json';
+
+        // Lire le cache si valide (< 24h)
+        if (file_exists($cacheFile)) {
+            $cached = json_decode(file_get_contents($cacheFile), true);
+            if (is_array($cached) && isset($cached['expires_at']) && $cached['expires_at'] > time()) {
+                return [$cached['products'] ?? [], ['from_cache' => true]];
+            }
+        }
+
+        $token    = $this->tokenCache->getValidToken();
+        $response = $this->get('/Enum/AvailableProducts', [], ['Authorization: Bearer ' . $token]);
+
+        // La réponse est {"products": [{"code": "107", "name": "..."}, ...]}
+        $items    = $response['products'] ?? $response;
+        $products = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $code = $item['code'] ?? $item['Code'] ?? $item['ProductCode'] ?? $item['Id'] ?? null;
+            $name = $item['name'] ?? $item['Name'] ?? $item['Description'] ?? null;
+            if ($code !== null && $name !== null) {
+                $products[(string)$code] = $name;
+            }
+        }
+
+        // Sauvegarder le cache uniquement si on a des données
+        if (!empty($products)) {
+            $dir = dirname($cacheFile);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0750, true);
+            }
+            file_put_contents($cacheFile, json_encode([
+                'expires_at' => time() + 86400,
+                'products'   => $products,
+            ], JSON_PRETTY_PRINT));
+        }
+
+        $this->log('Catalogue produits récupéré : ' . count($products) . ' produits (raw: ' . count($response) . ' éléments)');
+        return [$products, $response];
+    }
+
+    // ── Historique licence ─────────────────────────────────────────
+
+    /**
+     * Retourne l'historique complet d'une licence (commandes, suspensions, upgrades…).
+     * Endpoint documenté : POST /License/GetHistory
+     *
+     * @return array  ['LicenseHistory' => [...], 'Paging' => ['TotalCount' => N]]
+     */
+    public function getLicenseHistory(string $publicLicenseKey, int $skip = 0, int $take = 100): array
+    {
+        return $this->postAuthenticated('/License/GetHistory', [
+            'publicLicenseKey' => $publicLicenseKey,
+            'skip'             => $skip,
+            'take'             => min($take, 100), // max 100 selon la doc
+        ]);
+    }
+
+    // ── Équipements (découverte) ────────────────────────────────────
+
+    /**
+     * Teste plusieurs endpoints candidats pour lister les équipements d'une licence.
+     * Utilisé pour découvrir le bon endpoint avant implémentation définitive.
+     *
+     * @return array  [endpoint => ['status' => 'ok'|'error', 'raw' => ..., 'keys' => ...]]
+     */
+    public function debugDeviceEndpoints(string $publicLicenseKey): array
+    {
+        $candidates = [
+            '/License/Computers'     => ['publicLicenseKey' => $publicLicenseKey],
+            '/Search/Computers'      => ['publicLicenseKey' => $publicLicenseKey],
+            '/License/Seats'         => ['publicLicenseKey' => $publicLicenseKey],
+            '/Seat/List'             => ['publicLicenseKey' => $publicLicenseKey],
+            '/License/UsedBy'        => ['publicLicenseKey' => $publicLicenseKey],
+            '/Computer/ByLicense'    => ['publicLicenseKey' => $publicLicenseKey],
+        ];
+
+        $results = [];
+        foreach ($candidates as $endpoint => $body) {
+            try {
+                $response = $this->postAuthenticated($endpoint, $body);
+                $results[$endpoint] = [
+                    'status' => 'ok',
+                    'keys'   => is_array($response) ? array_keys($response) : null,
+                    'count'  => is_array($response) ? count($response) : null,
+                    'raw'    => $response,
+                ];
+            } catch (\Throwable $e) {
+                $results[$endpoint] = [
+                    'status'  => 'error',
+                    'message' => $e->getMessage(),
+                ];
+            }
+            usleep(self::RATE_LIMIT_SLEEP_US);
+        }
+
+        return $results;
+    }
+
     // ── Interne ────────────────────────────────────────────────────
 
     /**

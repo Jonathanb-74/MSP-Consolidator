@@ -123,12 +123,13 @@ $qp = compact('search', 'tagId', 'state', 'page', 'perPage');
                 <th class="text-center"><?= sortLink('state', $sortBy, $sortDir, 'État', $qp) ?></th>
                 <th><?= sortLink('expiry', $sortBy, $sortDir, 'Expiration', $qp) ?></th>
                 <th class="text-center">Sync</th>
+                <th class="text-center" title="Équipements (debug API)"><i class="bi bi-pc-display"></i></th>
             </tr>
         </thead>
         <tbody>
             <?php if (empty($licenses)): ?>
             <tr>
-                <td colspan="11" class="text-center text-body-secondary py-5">
+                <td colspan="12" class="text-center text-body-secondary py-5">
                     <i class="bi bi-shield-lock fs-1 d-block mb-2 opacity-25"></i>
                     Aucune licence trouvée.
                     <?php if (!$lastSync): ?>
@@ -158,7 +159,9 @@ $qp = compact('search', 'tagId', 'state', 'page', 'perPage');
                 $used     = (int)$lic['usage_count'];
                 $free     = (int)$lic['seats_free'];
                 $pct      = $qty > 0 ? round($used / $qty * 100) : 0;
-                $barClass = $pct >= 90 ? 'bg-danger' : ($pct >= 70 ? 'bg-warning' : 'bg-success');
+                $over     = $used > $qty;
+                $full     = !$over && $qty > 0 && $used === $qty;
+                $barClass = $over ? 'bg-danger' : ($full ? 'bg-success' : 'bg-primary');
 
                 $clientTags = parseTagsEset($lic['client_tags_raw'] ?? null);
             ?>
@@ -198,13 +201,16 @@ $qp = compact('search', 'tagId', 'state', 'page', 'perPage');
                     <br><code class="small text-body-secondary"><?= htmlspecialchars($lic['public_license_key']) ?></code>
                 </td>
                 <td class="text-center"><?= number_format($qty) ?></td>
-                <td class="text-center"><?= number_format($used) ?></td>
-                <td class="text-center <?= $free === 0 ? 'text-danger fw-bold' : '' ?>"><?= number_format($free) ?></td>
+                <td class="text-center <?= $over ? 'text-danger fw-semibold' : ($full ? 'text-success fw-semibold' : '') ?>">
+                    <?php if ($over): ?><i class="bi bi-exclamation-triangle-fill me-1 small"></i><?php endif; ?>
+                    <?= number_format($used) ?>
+                </td>
+                <td class="text-center <?= $over ? 'text-danger fw-bold' : ($free === 0 && $full ? 'text-success' : '') ?>"><?= number_format($free) ?></td>
                 <td style="min-width:80px">
                     <div class="progress" style="height:6px">
-                        <div class="progress-bar <?= $barClass ?>" style="width:<?= $pct ?>%" title="<?= $pct ?>%"></div>
+                        <div class="progress-bar <?= $barClass ?>" style="width:<?= min($pct, 100) ?>%" title="<?= $pct ?>%"></div>
                     </div>
-                    <small class="text-body-secondary"><?= $pct ?>%</small>
+                    <small class="<?= $over ? 'text-danger' : ($full ? 'text-success' : 'text-body-secondary') ?>"><?= $pct ?>%</small>
                 </td>
                 <td class="text-center"><?= $stateBadge ?></td>
                 <td class="small <?= ($expiringSoon ? 'text-warning' : ($expDate && $expDate < $today ? 'text-danger' : '')) ?>">
@@ -216,6 +222,29 @@ $qp = compact('search', 'tagId', 'state', 'page', 'perPage');
                             <?= date('d/m H:i', strtotime($lic['last_sync_at'])) ?>
                         <?php else: ?>—<?php endif; ?>
                     </small>
+                </td>
+                <td class="text-center">
+                    <a href="/eset/debug-devices?license_key=<?= urlencode($lic['public_license_key']) ?>"
+                       target="_blank"
+                       class="btn btn-xs btn-outline-secondary py-0 px-1 me-1"
+                       title="Voir le retour API équipements (debug)"
+                       style="font-size:.75rem">
+                        <i class="bi bi-pc-display"></i>
+                    </a>
+                    <button class="btn btn-xs btn-outline-secondary py-0 px-1 btn-show-history"
+                            data-key="<?= htmlspecialchars($lic['public_license_key']) ?>"
+                            data-product="<?= htmlspecialchars($lic['product_name'] ?? '') ?>"
+                            data-client="<?= htmlspecialchars($lic['client_name'] ?? '') ?>"
+                            data-company="<?= htmlspecialchars($lic['company_name'] ?? '') ?>"
+                            data-qty="<?= $qty ?>"
+                            data-used="<?= $used ?>"
+                            data-free="<?= $free ?>"
+                            data-over="<?= $over ? '1' : '0' ?>"
+                            data-full="<?= $full ? '1' : '0' ?>"
+                            title="Historique de la licence"
+                            style="font-size:.75rem">
+                        <i class="bi bi-clock-history"></i>
+                    </button>
                 </td>
             </tr>
             <?php endforeach; ?>
@@ -257,6 +286,36 @@ $queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'sta
     </div>
 </div>
 
+<!-- Modal Historique licence ESET -->
+<div class="modal fade" id="licenseHistoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="flex-grow-1 me-3">
+                    <h5 class="modal-title mb-1">
+                        <i class="bi bi-clock-history me-2 text-success"></i>
+                        Historique — <span id="histModalKey" class="font-monospace small"></span>
+                    </h5>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <small class="text-body-secondary" id="histModalClient"></small>
+                        <span id="histModalStats"></span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" id="histModalBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm text-secondary"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <small class="text-body-secondary me-auto" id="histModalCount"></small>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 // "Lancer la première sync" (table vide)
 document.getElementById('btnFirstSync')?.addEventListener('click', () => window.openSyncModal?.());
@@ -279,4 +338,137 @@ document.getElementById('btnExportCsv')?.addEventListener('click', function(e) {
     a.click();
     URL.revokeObjectURL(url);
 });
+
+// ── Historique licence ──────────────────────────────────────────────────────
+(function () {
+    let PRODUCT_NAMES = {}; // alimenté depuis l'API lors du premier clic
+
+    const TYPE_LABELS = {
+        '1':  { label: 'Annulation',              color: 'danger'  },
+        '2':  { label: 'Conversion (trial→full)', color: 'success' },
+        '3':  { label: 'Extension d\'essai',      color: 'info'    },
+        '4':  { label: 'Nouvelle commande',        color: 'success' },
+        '5':  { label: 'Mise à jour quantité',     color: 'primary' },
+        '6':  { label: 'Suspension',               color: 'warning' },
+        '7':  { label: 'Réactivation',             color: 'success' },
+        '8':  { label: 'Changement de clé',        color: 'secondary'},
+        '9':  { label: 'Upgrade',                  color: 'success' },
+        '10': { label: 'Downgrade',                color: 'warning' },
+    };
+
+    function formatDate(raw) {
+        if (!raw) return '—';
+        const d = new Date(raw);
+        return isNaN(d) ? raw : d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    }
+
+    function buildDetail(entry) {
+        const parts = [];
+        if (entry.PreviousUnits   && entry.RequestedUnits) parts.push(`${entry.PreviousUnits} → ${entry.RequestedUnits} unités`);
+        else if (entry.RequestedUnits)                      parts.push(`${entry.RequestedUnits} unité(s)`);
+        if (entry.PreviousProductCode && entry.RequestedProductCode) {
+            const prev = PRODUCT_NAMES[entry.PreviousProductCode] ?? `#${entry.PreviousProductCode}`;
+            const next = PRODUCT_NAMES[entry.RequestedProductCode] ?? `#${entry.RequestedProductCode}`;
+            parts.push(`Produit : ${prev} → ${next}`);
+        }
+        if (entry.PreviousLicenseKey  && entry.RequestedLicenseKey)  parts.push(`Clé : ${entry.PreviousLicenseKey} → ${entry.RequestedLicenseKey}`);
+        if (entry.TrialExtensionCount) parts.push(`Extension n°${entry.TrialExtensionCount}`);
+        if (entry.LicenseTypeId === '1') parts.push('Licence complète');
+        return parts.join(' &nbsp;·&nbsp; ');
+    }
+
+    function renderHistory(data) {
+        // Enrichir la map produits avec ce que l'API a retourné
+        if (data.products && typeof data.products === 'object') {
+            PRODUCT_NAMES = Object.assign({}, data.products);
+        }
+
+        const history = data.history ?? [];
+        const count   = data.total_count ?? history.length;
+
+        document.getElementById('histModalCount').textContent =
+            count + ' événement' + (count > 1 ? 's' : '');
+
+        if (!history.length) {
+            document.getElementById('histModalBody').innerHTML =
+                '<p class="text-center text-body-secondary py-4">Aucun historique disponible.</p>';
+            return;
+        }
+
+        let rows = history.map(entry => {
+            const t      = TYPE_LABELS[entry.Type] ?? { label: 'Type ' + entry.Type, color: 'secondary' };
+            const detail = buildDetail(entry);
+            return `<tr>
+                <td class="small text-body-secondary text-nowrap">${formatDate(entry.Date)}</td>
+                <td><span class="badge bg-${t.color}">${t.label}</span></td>
+                <td class="small">${detail ? `<span class="text-body-secondary">${detail}</span>` : ''}</td>
+                <td class="small text-body-secondary">${entry.User ?? '—'}</td>
+            </tr>`;
+        }).join('');
+
+        document.getElementById('histModalBody').innerHTML = `
+            <table class="table table-sm table-hover small mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Date</th>
+                        <th>Opération</th>
+                        <th>Détail</th>
+                        <th>Utilisateur</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    }
+
+    const modalEl = document.getElementById('licenseHistoryModal');
+
+    document.querySelectorAll('.btn-show-history').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const bsModal  = bootstrap.Modal.getOrCreateInstance(modalEl);
+            const key      = this.dataset.key;
+            const product  = this.dataset.product;
+            const client   = this.dataset.client;
+            const company  = this.dataset.company;
+            const qty      = parseInt(this.dataset.qty,  10);
+            const used     = parseInt(this.dataset.used, 10);
+            const free     = parseInt(this.dataset.free, 10);
+            const over     = this.dataset.over === '1';
+            const full     = this.dataset.full === '1';
+
+            document.getElementById('histModalKey').textContent = key + (product ? ' — ' + product : '');
+
+            // Client ou company ESET en fallback
+            const clientEl = document.getElementById('histModalClient');
+            clientEl.textContent = client || (company ? company : '');
+            clientEl.className   = client
+                ? 'fw-semibold text-body-secondary'
+                : 'fst-italic text-body-secondary small';
+
+            // Badges stats licence
+            const statsEl   = document.getElementById('histModalStats');
+            const qtyColor  = over ? 'danger' : (full ? 'success' : 'primary');
+            const freeColor = over ? 'danger' : (full ? 'success' : 'secondary');
+            statsEl.innerHTML = `
+                <span class="badge bg-secondary">${qty} commandés</span>
+                <span class="badge bg-${qtyColor}">${used} utilisés</span>
+                <span class="badge bg-${freeColor}">${free} libres</span>`;
+
+            document.getElementById('histModalCount').textContent = '';
+            document.getElementById('histModalBody').innerHTML   =
+                '<div class="text-center py-4"><div class="spinner-border spinner-border-sm text-secondary"></div></div>';
+            document.getElementById('histModalBody').innerHTML   =
+                '<div class="text-center py-4"><div class="spinner-border spinner-border-sm text-secondary"></div></div>';
+
+            bsModal.show();
+
+            fetch('/eset/debug-history?license_key=' + encodeURIComponent(key))
+                .then(r => r.json())
+                .then(renderHistory)
+                .catch(err => {
+                    document.getElementById('histModalBody').innerHTML =
+                        `<div class="alert alert-danger m-3">Erreur : ${err.message}</div>`;
+                });
+        });
+    });
+})();
 </script>

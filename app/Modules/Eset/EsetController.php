@@ -375,6 +375,150 @@ class EsetController extends Controller
         $this->json($result);
     }
 
+    /**
+     * GET /eset/debug-history?license_key=XXX
+     * Retourne l'historique d'une licence via POST /License/GetHistory.
+     */
+    public function debugHistory(array $params = []): void
+    {
+        $licenseKey = trim($_GET['license_key'] ?? '');
+
+        if (!$licenseKey) {
+            $row = $this->db->fetchOne(
+                "SELECT el.public_license_key, ec.connection_id
+                 FROM eset_licenses el
+                 JOIN eset_companies ec ON ec.eset_company_id = el.eset_company_id
+                 WHERE el.state = 'VALID'
+                 LIMIT 1"
+            );
+            if (!$row) {
+                $this->json(['error' => 'Aucune licence VALID trouvée. Passer ?license_key=XXX.'], 400);
+                return;
+            }
+            $licenseKey   = $row['public_license_key'];
+            $connectionId = (int)$row['connection_id'];
+        } else {
+            $row = $this->db->fetchOne(
+                "SELECT ec.connection_id
+                 FROM eset_licenses el
+                 JOIN eset_companies ec ON ec.eset_company_id = el.eset_company_id
+                 WHERE el.public_license_key = ? LIMIT 1",
+                [$licenseKey]
+            );
+            if (!$row) {
+                $this->json(['error' => "Licence '{$licenseKey}' introuvable en base."], 404);
+                return;
+            }
+            $connectionId = (int)$row['connection_id'];
+        }
+
+        $connection = $this->db->fetchOne(
+            "SELECT pc.id, pc.config_key FROM provider_connections pc WHERE pc.id = ?",
+            [$connectionId]
+        );
+        if (!$connection) {
+            $this->json(['error' => 'Connexion ESET introuvable.'], 500);
+            return;
+        }
+
+        $credentials = ProviderConfig::findConnection('eset', $connection['config_key']);
+        if (!$credentials) {
+            $this->json(['error' => "Credentials introuvables pour config_key '{$connection['config_key']}'."], 500);
+            return;
+        }
+
+        $tokenCache = new EsetTokenCache($credentials);
+        $apiClient  = new EsetApiClient($credentials, $tokenCache);
+
+        try {
+            $result = $apiClient->getLicenseHistory($licenseKey, 0, 100);
+        } catch (\Throwable $e) {
+            $this->json(['error' => $e->getMessage(), 'license_key' => $licenseKey], 500);
+            return;
+        }
+
+        // Récupérer le catalogue produits séparément (erreur non fatale)
+        $products = [];
+        try {
+            [$products] = $apiClient->getAvailableProducts();
+        } catch (\Throwable $e) {
+            // On continue sans les noms de produits
+        }
+
+        $this->json([
+            'tested_license_key' => $licenseKey,
+            'total_count'        => $result['Paging']['TotalCount'] ?? null,
+            'history'            => $result['LicenseHistory'] ?? $result,
+            'products'           => $products,
+        ]);
+    }
+
+    /**
+     * GET /eset/debug-devices?license_key=XXX
+     * Teste plusieurs endpoints candidats pour découvrir celui qui retourne les équipements
+     * d'une licence. À utiliser avant d'implémenter la sync complète.
+     */
+    public function debugDevices(array $params = []): void
+    {
+        $licenseKey = trim($_GET['license_key'] ?? '');
+
+        if (!$licenseKey) {
+            // Prendre la première licence valide en base si aucune clé fournie
+            $row = $this->db->fetchOne(
+                "SELECT el.public_license_key, ec.connection_id
+                 FROM eset_licenses el
+                 JOIN eset_companies ec ON ec.eset_company_id = el.eset_company_id
+                 WHERE el.state = 'VALID'
+                 LIMIT 1"
+            );
+            if (!$row) {
+                $this->json(['error' => 'Aucune licence VALID trouvée en base. Passer ?license_key=XXX en paramètre.'], 400);
+                return;
+            }
+            $licenseKey   = $row['public_license_key'];
+            $connectionId = (int)$row['connection_id'];
+        } else {
+            $row = $this->db->fetchOne(
+                "SELECT ec.connection_id
+                 FROM eset_licenses el
+                 JOIN eset_companies ec ON ec.eset_company_id = el.eset_company_id
+                 WHERE el.public_license_key = ?
+                 LIMIT 1",
+                [$licenseKey]
+            );
+            if (!$row) {
+                $this->json(['error' => "Licence '{$licenseKey}' introuvable en base."], 404);
+                return;
+            }
+            $connectionId = (int)$row['connection_id'];
+        }
+
+        $connection = $this->db->fetchOne(
+            "SELECT pc.id, pc.config_key FROM provider_connections pc WHERE pc.id = ?",
+            [$connectionId]
+        );
+        if (!$connection) {
+            $this->json(['error' => 'Connexion ESET introuvable.'], 500);
+            return;
+        }
+
+        $credentials = ProviderConfig::findConnection('eset', $connection['config_key']);
+        if (!$credentials) {
+            $this->json(['error' => "Credentials introuvables pour config_key '{$connection['config_key']}'."], 500);
+            return;
+        }
+
+        $tokenCache = new EsetTokenCache($credentials);
+        $apiClient  = new EsetApiClient($credentials, $tokenCache);
+
+        $results = $apiClient->debugDeviceEndpoints($licenseKey);
+
+        $this->json([
+            'tested_license_key' => $licenseKey,
+            'endpoints'          => $results,
+        ]);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────
 
     private function buildWhere(string $search, int $tagId, string $state): array

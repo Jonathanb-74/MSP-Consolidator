@@ -23,6 +23,7 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
     $newDir = ($current === $col && $dir === 'ASC') ? 'DESC' : 'ASC';
     $icon   = $current === $col ? ($dir === 'ASC' ? ' ↑' : ' ↓') : '';
     $params = array_merge($queryParams, ['sort' => $col, 'dir' => $newDir]);
+    // http_build_query encode les tableaux (tags[], providers[]) correctement
     return '<a href="/licenses?' . http_build_query($params) . '" class="text-white text-decoration-none">'
          . htmlspecialchars($label) . $icon . '</a>';
 }
@@ -38,46 +39,112 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
     </div>
 </div>
 
+<?php
+$activeFilters = count($tagIds) + count($providerFilters);
+$providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'NinjaOne'];
+?>
 <!-- Filtres -->
-<form method="GET" action="/licenses" class="row g-2 mb-2">
-    <div class="col-md-4">
-        <div class="input-group input-group-sm">
-            <span class="input-group-text"><i class="bi bi-search"></i></span>
-            <input type="text" name="search" class="form-control"
-                   placeholder="Rechercher (nom, numéro client)…"
-                   value="<?= htmlspecialchars($search) ?>">
+<form method="GET" action="/licenses" id="licenseFilterForm" class="d-flex flex-wrap gap-2 align-items-center mb-2">
+
+    <!-- Recherche -->
+    <div class="input-group input-group-sm" style="width:260px">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" name="search" class="form-control"
+               placeholder="Nom, numéro client…"
+               value="<?= htmlspecialchars($search) ?>">
+    </div>
+
+    <!-- Tags multi-select -->
+    <?php if (!empty($allTags)): ?>
+    <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-1"
+                type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+            <i class="bi bi-tags"></i>
+            Tags
+            <?php if (!empty($tagIds)): ?>
+                <span class="badge rounded-pill bg-primary" style="font-size:.7rem"><?= count($tagIds) ?></span>
+            <?php endif; ?>
+        </button>
+        <div class="dropdown-menu shadow-sm p-1" style="min-width:200px">
+            <?php foreach ($allTags as $t): ?>
+            <label class="dropdown-item d-flex align-items-center gap-2 py-1 rounded" style="cursor:pointer">
+                <input type="checkbox" class="form-check-input flex-shrink-0 filter-auto"
+                       name="tags[]" value="<?= (int)$t['id'] ?>"
+                       <?= in_array((int)$t['id'], $tagIds) ? 'checked' : '' ?>>
+                <span class="badge rounded-pill" style="background-color:<?= htmlspecialchars($t['color']) ?>">
+                    <?= htmlspecialchars($t['name']) ?>
+                </span>
+            </label>
+            <?php endforeach; ?>
         </div>
     </div>
-    <div class="col-md-2">
-        <select name="tag" class="form-select form-select-sm">
-            <option value="">Tous les tags</option>
-            <?php foreach ($allTags as $t): ?>
-                <option value="<?= (int)$t['id'] ?>" <?= $tagId === (int)$t['id'] ? 'selected' : '' ?>>
-                    <?= htmlspecialchars($t['name']) ?>
-                </option>
+    <?php endif; ?>
+
+    <!-- Fournisseurs multi-select -->
+    <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-1"
+                type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+            <i class="bi bi-cloud"></i>
+            Fournisseurs
+            <?php if (!empty($providerFilters)): ?>
+                <span class="badge rounded-pill bg-primary" style="font-size:.7rem"><?= count($providerFilters) ?></span>
+            <?php endif; ?>
+        </button>
+        <div class="dropdown-menu shadow-sm p-1" style="min-width:190px">
+            <?php foreach ($providerLabels as $val => $label): ?>
+            <label class="dropdown-item d-flex align-items-center gap-2 py-1 rounded" style="cursor:pointer">
+                <input type="checkbox" class="form-check-input flex-shrink-0 filter-auto"
+                       name="providers[]" value="<?= $val ?>"
+                       <?= in_array($val, $providerFilters) ? 'checked' : '' ?>>
+                <?= $label ?>
+            </label>
             <?php endforeach; ?>
-        </select>
+        </div>
     </div>
-    <div class="col-md-3">
-        <select name="provider" class="form-select form-select-sm">
-            <option value="" <?= $providerFilter === '' ? 'selected' : '' ?>>Tous les clients</option>
-            <option value="eset"     <?= $providerFilter === 'eset'     ? 'selected' : '' ?>>Avec licences ESET</option>
-            <option value="becloud"  <?= $providerFilter === 'becloud'  ? 'selected' : '' ?>>Avec abonnements Be-Cloud</option>
-            <option value="ninjaone" <?= $providerFilter === 'ninjaone' ? 'selected' : '' ?>>Avec équipements NinjaOne</option>
-        </select>
+
+    <!-- Toggle : afficher sans licences -->
+    <div class="form-check form-switch mb-0 ms-1">
+        <input class="form-check-input filter-auto" type="checkbox"
+               id="showAllToggle" name="show_all" value="1"
+               <?= $showAll ? 'checked' : '' ?>>
+        <label class="form-check-label small text-body-secondary" for="showAllToggle">
+            Afficher sans licences
+        </label>
     </div>
-    <div class="col-auto">
-        <button type="submit" class="btn btn-sm btn-outline-secondary">Filtrer</button>
-        <a href="/licenses" class="btn btn-sm btn-outline-secondary">Réinitialiser</a>
-    </div>
-    <input type="hidden" name="sort" value="<?= htmlspecialchars($sortBy) ?>">
-    <input type="hidden" name="dir"  value="<?= htmlspecialchars($sortDir) ?>">
+
+    <!-- Réinitialiser -->
+    <?php if ($activeFilters > 0 || $search !== '' || $showAll): ?>
+    <a href="/licenses" class="btn btn-sm btn-outline-danger">
+        <i class="bi bi-x-lg me-1"></i>Réinitialiser
+    </a>
+    <?php endif; ?>
+
+    <input type="hidden" name="sort"    value="<?= htmlspecialchars($sortBy) ?>">
+    <input type="hidden" name="dir"     value="<?= htmlspecialchars($sortDir) ?>">
+    <input type="hidden" name="perPage" value="<?= $perPage ?>">
 </form>
+
+<?php if (!empty($tagIds) || !empty($providerFilters)): ?>
+<div class="d-flex flex-wrap gap-1 mb-2">
+    <?php foreach ($tagIds as $tid):
+        $tData = array_values(array_filter($allTags, fn($t) => (int)$t['id'] === $tid))[0] ?? null;
+        if (!$tData) continue;
+    ?>
+    <span class="badge rounded-pill d-flex align-items-center gap-1"
+          style="background-color:<?= htmlspecialchars($tData['color']) ?>">
+        <?= htmlspecialchars($tData['name']) ?>
+    </span>
+    <?php endforeach; ?>
+    <?php foreach ($providerFilters as $pf): ?>
+    <span class="badge rounded-pill bg-secondary"><?= htmlspecialchars($providerLabels[$pf] ?? $pf) ?></span>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
 </div>
 
 <!-- Tableau -->
 <div class="table-responsive">
-    <?php $qp = ['search' => $search, 'tag' => $tagId ?: '', 'provider' => $providerFilter, 'perPage' => $perPage]; ?>
+    <?php $qp = ['search' => $search, 'tags' => $tagIds, 'providers' => $providerFilters, 'show_all' => $showAll ? '1' : '', 'perPage' => $perPage]; ?>
     <table class="table table-hover align-middle table-sm" id="licenseRecapTable">
         <thead class="table-dark">
             <tr>
@@ -240,14 +307,17 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                                                 <th>Produit</th>
                                                 <th class="text-center">Lic</th>
                                                 <th>Machines</th>
+                                                <th></th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                         <?php foreach ($clientDetails as $detail):
-                                            $dTotal = (int)$detail['seats_total'];
-                                            $dUsed  = (int)$detail['seats_used'];
-                                            $dOver  = $dTotal > 0 && $dUsed > $dTotal;
-                                            $dPct   = $dTotal > 0 ? min(100, (int)round($dUsed / $dTotal * 100)) : 0;
+                                            $dTotal   = (int)$detail['seats_total'];
+                                            $dUsed    = (int)$detail['seats_used'];
+                                            $dOver    = $dTotal > 0 && $dUsed > $dTotal;
+                                            $dKeys    = !empty($detail['license_keys'])  ? explode(',', $detail['license_keys'])  : [];
+                                            $dQtys    = !empty($detail['license_qtys'])  ? explode(',', $detail['license_qtys'])  : [];
+                                            $dUseds   = !empty($detail['license_useds']) ? explode(',', $detail['license_useds']) : [];
                                         ?>
                                             <tr <?= $dOver ? 'class="table-danger"' : '' ?>>
                                                 <td><?= htmlspecialchars($detail['product_name']) ?></td>
@@ -266,6 +336,33 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
                                                             <span class="text-body-secondary" style="min-width:55px"><?= $dUsed ?>/<?= $dTotal ?></span>
                                                         <?php endif; ?>
                                                     </div>
+                                                </td>
+                                                <td class="text-end">
+                                                    <?php foreach ($dKeys as $ki => $dKey):
+                                                        $kQty  = (int)($dQtys[$ki]  ?? 0);
+                                                        $kUsed = (int)($dUseds[$ki] ?? 0);
+                                                        $kFree = $kQty - $kUsed;
+                                                        $kOver = $kUsed > $kQty;
+                                                        $kFull = !$kOver && $kQty > 0 && $kUsed === $kQty;
+                                                    ?>
+                                                    <button class="btn btn-xs btn-outline-secondary py-0 px-1 btn-show-history"
+                                                            data-key="<?= htmlspecialchars($dKey) ?>"
+                                                            data-product="<?= htmlspecialchars($detail['product_name']) ?>"
+                                                            data-client="<?= htmlspecialchars($client['name']) ?>"
+                                                            data-company=""
+                                                            data-qty="<?= $kQty ?>"
+                                                            data-used="<?= $kUsed ?>"
+                                                            data-free="<?= $kFree ?>"
+                                                            data-over="<?= $kOver ? '1' : '0' ?>"
+                                                            data-full="<?= $kFull ? '1' : '0' ?>"
+                                                            title="Historique <?= htmlspecialchars($dKey) ?>"
+                                                            style="font-size:.7rem">
+                                                        <i class="bi bi-clock-history"></i>
+                                                        <?php if (count($dKeys) > 1): ?>
+                                                            <span class="font-monospace" style="font-size:.65rem"><?= htmlspecialchars($dKey) ?></span>
+                                                        <?php endif; ?>
+                                                    </button>
+                                                    <?php endforeach; ?>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -355,7 +452,7 @@ function licSortLink(string $col, string $current, string $dir, string $label, a
 
 <?php
 $totalPages = (int)ceil($total / $perPage);
-$queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'provider' => $providerFilter, 'sort' => $sortBy, 'dir' => $sortDir, 'perPage' => $perPage]);
+$queryBase  = http_build_query(['search' => $search, 'tags' => $tagIds, 'providers' => $providerFilters, 'show_all' => $showAll ? '1' : '', 'sort' => $sortBy, 'dir' => $sortDir, 'perPage' => $perPage]);
 ?>
 <div class="page-sticky-bottom d-flex justify-content-between align-items-center">
     <small class="text-body-secondary">
@@ -383,7 +480,44 @@ $queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'pro
     </div>
 </div>
 
+<!-- Modal Historique licence ESET -->
+<div class="modal fade" id="licenseHistoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="flex-grow-1 me-3">
+                    <h5 class="modal-title mb-1">
+                        <i class="bi bi-clock-history me-2 text-success"></i>
+                        Historique — <span id="histModalKey" class="font-monospace small"></span>
+                    </h5>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <small class="fw-semibold text-body-secondary" id="histModalClient"></small>
+                        <span id="histModalStats"></span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" id="histModalBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm text-secondary"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <small class="text-body-secondary me-auto" id="histModalCount"></small>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
+// Auto-submit sur changement de checkbox/switch dans les filtres
+document.querySelectorAll('.filter-auto').forEach(function(el) {
+    el.addEventListener('change', function() {
+        document.getElementById('licenseFilterForm').submit();
+    });
+});
+
 // Rotation de la flèche au clic
 document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function(row) {
     row.addEventListener('click', function() {
@@ -396,4 +530,118 @@ document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function(row) {
         icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
     });
 });
+
+// ── Historique licence ──────────────────────────────────────────────────────
+(function () {
+    const TYPE_LABELS = {
+        '1':  { label: 'Annulation',              color: 'danger'   },
+        '2':  { label: 'Conversion (trial→full)', color: 'success'  },
+        '3':  { label: 'Extension d\'essai',      color: 'info'     },
+        '4':  { label: 'Nouvelle commande',        color: 'success'  },
+        '5':  { label: 'Mise à jour quantité',     color: 'primary'  },
+        '6':  { label: 'Suspension',               color: 'warning'  },
+        '7':  { label: 'Réactivation',             color: 'success'  },
+        '8':  { label: 'Changement de clé',        color: 'secondary'},
+        '9':  { label: 'Upgrade',                  color: 'success'  },
+        '10': { label: 'Downgrade',                color: 'warning'  },
+    };
+
+    let PRODUCT_NAMES = {};
+
+    function formatDate(raw) {
+        if (!raw) return '—';
+        const d = new Date(raw);
+        return isNaN(d) ? raw : d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    }
+
+    function buildDetail(entry) {
+        const parts = [];
+        if (entry.PreviousUnits && entry.RequestedUnits) parts.push(`${entry.PreviousUnits} → ${entry.RequestedUnits} unités`);
+        else if (entry.RequestedUnits)                   parts.push(`${entry.RequestedUnits} unité(s)`);
+        if (entry.PreviousProductCode && entry.RequestedProductCode) {
+            const prev = PRODUCT_NAMES[entry.PreviousProductCode] ?? `#${entry.PreviousProductCode}`;
+            const next = PRODUCT_NAMES[entry.RequestedProductCode] ?? `#${entry.RequestedProductCode}`;
+            parts.push(`Produit : ${prev} → ${next}`);
+        }
+        if (entry.PreviousLicenseKey && entry.RequestedLicenseKey) parts.push(`Clé : ${entry.PreviousLicenseKey} → ${entry.RequestedLicenseKey}`);
+        if (entry.TrialExtensionCount) parts.push(`Extension n°${entry.TrialExtensionCount}`);
+        if (entry.LicenseTypeId === '1') parts.push('Licence complète');
+        return parts.join(' &nbsp;·&nbsp; ');
+    }
+
+    function renderHistory(data) {
+        if (data.products && typeof data.products === 'object') {
+            PRODUCT_NAMES = Object.assign({}, data.products);
+        }
+        const history = data.history ?? [];
+        const count   = data.total_count ?? history.length;
+        document.getElementById('histModalCount').textContent = count + ' événement' + (count > 1 ? 's' : '');
+
+        if (!history.length) {
+            document.getElementById('histModalBody').innerHTML =
+                '<p class="text-center text-body-secondary py-4">Aucun historique disponible.</p>';
+            return;
+        }
+
+        const rows = history.map(entry => {
+            const t      = TYPE_LABELS[entry.Type] ?? { label: 'Type ' + entry.Type, color: 'secondary' };
+            const detail = buildDetail(entry);
+            return `<tr>
+                <td class="small text-body-secondary text-nowrap">${formatDate(entry.Date)}</td>
+                <td><span class="badge bg-${t.color}">${t.label}</span></td>
+                <td class="small">${detail ? `<span class="text-body-secondary">${detail}</span>` : ''}</td>
+                <td class="small text-body-secondary">${entry.User ?? '—'}</td>
+            </tr>`;
+        }).join('');
+
+        document.getElementById('histModalBody').innerHTML = `
+            <table class="table table-sm table-hover small mb-0">
+                <thead class="table-dark">
+                    <tr><th>Date</th><th>Opération</th><th>Détail</th><th>Utilisateur</th></tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    }
+
+    const modalEl = document.getElementById('licenseHistoryModal');
+
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.btn-show-history');
+        if (!btn) return;
+
+        const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        const key     = btn.dataset.key;
+        const product = btn.dataset.product;
+        const client  = btn.dataset.client;
+        const qty     = parseInt(btn.dataset.qty,  10);
+        const used    = parseInt(btn.dataset.used, 10);
+        const free    = parseInt(btn.dataset.free, 10);
+        const over    = btn.dataset.over === '1';
+        const full    = btn.dataset.full === '1';
+
+        document.getElementById('histModalKey').textContent    = key + (product ? ' — ' + product : '');
+        document.getElementById('histModalClient').textContent = client || '';
+        document.getElementById('histModalCount').textContent  = '';
+
+        const qtyColor  = over ? 'danger' : (full ? 'success' : 'primary');
+        const freeColor = over ? 'danger' : (full ? 'success' : 'secondary');
+        document.getElementById('histModalStats').innerHTML = `
+            <span class="badge bg-secondary">${qty} commandés</span>
+            <span class="badge bg-${qtyColor}">${used} utilisés</span>
+            <span class="badge bg-${freeColor}">${free} libres</span>`;
+
+        document.getElementById('histModalBody').innerHTML =
+            '<div class="text-center py-4"><div class="spinner-border spinner-border-sm text-secondary"></div></div>';
+
+        bsModal.show();
+
+        fetch('/eset/debug-history?license_key=' + encodeURIComponent(key))
+            .then(r => r.json())
+            .then(renderHistory)
+            .catch(err => {
+                document.getElementById('histModalBody').innerHTML =
+                    `<div class="alert alert-danger m-3">Erreur : ${err.message}</div>`;
+            });
+    });
+})();
 </script>
