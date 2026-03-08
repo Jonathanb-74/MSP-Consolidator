@@ -54,7 +54,8 @@ $router->post('/tags/delete',   [TagController::class, 'delete']);
 $router->post('/tags/reorder',  [TagController::class, 'reorder']);
 
 // Récap licences
-$router->get('/licenses', [LicenseController::class, 'index']);
+$router->get('/licenses',             [LicenseController::class, 'index']);
+$router->get('/licenses/{id}/report', [LicenseController::class, 'report']);
 
 // Mapping fournisseur ↔ client
 $router->get('/mapping',                [MappingController::class, 'index']);

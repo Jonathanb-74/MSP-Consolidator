@@ -65,7 +65,21 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                 <span class="badge rounded-pill bg-primary" style="font-size:.7rem"><?= count($tagIds) ?></span>
             <?php endif; ?>
         </button>
-        <div class="dropdown-menu shadow-sm p-1" style="min-width:200px">
+        <div class="dropdown-menu shadow-sm p-1" style="min-width:220px">
+            <!-- Toggle ET / OU -->
+            <?php if (count($allTags) > 1): ?>
+            <div class="d-flex align-items-center gap-1 px-2 py-1 mb-1 border-bottom">
+                <small class="text-body-secondary me-1">Mode :</small>
+                <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check filter-auto" name="tag_logic" id="tag_logic_or"
+                           value="or" <?= $tagLogic === 'or' ? 'checked' : '' ?> autocomplete="off">
+                    <label class="btn btn-outline-secondary py-0 px-2" for="tag_logic_or" style="font-size:.75rem">OU</label>
+                    <input type="radio" class="btn-check filter-auto" name="tag_logic" id="tag_logic_and"
+                           value="and" <?= $tagLogic === 'and' ? 'checked' : '' ?> autocomplete="off">
+                    <label class="btn btn-outline-secondary py-0 px-2" for="tag_logic_and" style="font-size:.75rem">ET</label>
+                </div>
+            </div>
+            <?php endif; ?>
             <?php foreach ($allTags as $t): ?>
             <label class="dropdown-item d-flex align-items-center gap-2 py-1 rounded" style="cursor:pointer">
                 <input type="checkbox" class="form-check-input flex-shrink-0 filter-auto"
@@ -90,7 +104,19 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                 <span class="badge rounded-pill bg-primary" style="font-size:.7rem"><?= count($providerFilters) ?></span>
             <?php endif; ?>
         </button>
-        <div class="dropdown-menu shadow-sm p-1" style="min-width:190px">
+        <div class="dropdown-menu shadow-sm p-1" style="min-width:210px">
+            <!-- Toggle ET / OU -->
+            <div class="d-flex align-items-center gap-1 px-2 py-1 mb-1 border-bottom">
+                <small class="text-body-secondary me-1">Mode :</small>
+                <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check filter-auto" name="provider_logic" id="prov_logic_or"
+                           value="or" <?= $providerLogic === 'or' ? 'checked' : '' ?> autocomplete="off">
+                    <label class="btn btn-outline-secondary py-0 px-2" for="prov_logic_or" style="font-size:.75rem">OU</label>
+                    <input type="radio" class="btn-check filter-auto" name="provider_logic" id="prov_logic_and"
+                           value="and" <?= $providerLogic === 'and' ? 'checked' : '' ?> autocomplete="off">
+                    <label class="btn btn-outline-secondary py-0 px-2" for="prov_logic_and" style="font-size:.75rem">ET</label>
+                </div>
+            </div>
             <?php foreach ($providerLabels as $val => $label): ?>
             <label class="dropdown-item d-flex align-items-center gap-2 py-1 rounded" style="cursor:pointer">
                 <input type="checkbox" class="form-check-input flex-shrink-0 filter-auto"
@@ -144,7 +170,7 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
 
 <!-- Tableau -->
 <div class="table-responsive">
-    <?php $qp = ['search' => $search, 'tags' => $tagIds, 'providers' => $providerFilters, 'show_all' => $showAll ? '1' : '', 'perPage' => $perPage]; ?>
+    <?php $qp = ['search' => $search, 'tags' => $tagIds, 'tag_logic' => $tagLogic, 'providers' => $providerFilters, 'provider_logic' => $providerLogic, 'show_all' => $showAll ? '1' : '', 'perPage' => $perPage]; ?>
     <table class="table table-hover align-middle table-sm" id="licenseRecapTable">
         <thead class="table-dark">
             <tr>
@@ -210,6 +236,13 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                 <td class="fw-medium">
                     <i class="bi bi-chevron-right expand-icon me-1 small text-body-secondary" style="transition:transform .2s"></i>
                     <?= htmlspecialchars($client['name']) ?>
+                    <a href="/licenses/<?= $client['id'] ?>/report"
+                       class="btn btn-xs btn-outline-danger py-0 px-1 ms-1"
+                       title="Exporter le rapport PDF"
+                       onclick="event.stopPropagation()"
+                       style="font-size:.7rem">
+                        <i class="bi bi-file-earmark-pdf"></i>
+                    </a>
                 </td>
                 <td>
                     <div class="d-flex flex-wrap gap-1">
@@ -452,7 +485,7 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
 
 <?php
 $totalPages = (int)ceil($total / $perPage);
-$queryBase  = http_build_query(['search' => $search, 'tags' => $tagIds, 'providers' => $providerFilters, 'show_all' => $showAll ? '1' : '', 'sort' => $sortBy, 'dir' => $sortDir, 'perPage' => $perPage]);
+$queryBase  = http_build_query(['search' => $search, 'tags' => $tagIds, 'tag_logic' => $tagLogic, 'providers' => $providerFilters, 'provider_logic' => $providerLogic, 'show_all' => $showAll ? '1' : '', 'sort' => $sortBy, 'dir' => $sortDir, 'perPage' => $perPage]);
 ?>
 <div class="page-sticky-bottom d-flex justify-content-between align-items-center">
     <small class="text-body-secondary">

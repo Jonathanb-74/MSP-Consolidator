@@ -26,7 +26,9 @@ class LicenseController extends Controller
         $_pp     = (int)($_GET['perPage'] ?? 50);
         $perPage = in_array($_pp, [25, 50, 100, 250]) ? $_pp : 50;
         $offset  = ($page - 1) * $perPage;
-        $showAll = isset($_GET['show_all']) && $_GET['show_all'] === '1';
+        $showAll      = isset($_GET['show_all']) && $_GET['show_all'] === '1';
+        $tagLogic      = ($_GET['tag_logic'] ?? '') === 'and' ? 'and' : 'or';
+        $providerLogic = ($_GET['provider_logic'] ?? '') === 'and' ? 'and' : 'or';
 
         // Tags : multi-sélection (tags[]=1&tags[]=2) + compat ancien param tag=
         $tagIds = array_values(array_unique(array_filter(array_map('intval', (array)($_GET['tags'] ?? [])))));
@@ -58,8 +60,8 @@ class LicenseController extends Controller
         ];
         $orderCol = $allowedSorts[$sortBy] ?? 'c.name';
 
-        [$whereSql, $whereParams] = $this->buildWhere($search, $tagIds);
-        $havingSql = $this->buildHaving($providerFilters, $showAll);
+        [$whereSql, $whereParams, $tagHavingSql] = $this->buildWhere($search, $tagIds, $tagLogic);
+        $havingSql = $this->buildHaving($providerFilters, $showAll, $providerLogic, $tagHavingSql);
 
         // Joins toujours LEFT (le filtrage se fait via HAVING)
         $bcJoinSql    = $this->bcJoin();
@@ -168,6 +170,8 @@ class LicenseController extends Controller
             'tagIds'          => $tagIds,
             'providerFilters' => $providerFilters,
             'showAll'         => $showAll,
+            'tagLogic'        => $tagLogic,
+            'providerLogic'   => $providerLogic,
             'allTags'         => $allTags,
             'sortBy'          => $sortBy,
             'sortDir'         => $sortDir,
@@ -177,12 +181,103 @@ class LicenseController extends Controller
         ]);
     }
 
+    /**
+     * GET /licenses/{id}/report — Génère et stream un rapport PDF pour un client.
+     */
+    public function report(array $params = []): void
+    {
+        $clientId = (int)($params['id'] ?? 0);
+        if (!$clientId) { http_response_code(404); exit; }
+
+        $client = $this->db->fetchOne(
+            "SELECT * FROM clients WHERE id = ? AND is_active = 1",
+            [$clientId]
+        );
+        if (!$client) { http_response_code(404); exit; }
+
+        $tags = $this->db->fetchAll(
+            "SELECT t.name, t.color
+             FROM client_tags ct JOIN tags t ON t.id = ct.tag_id
+             WHERE ct.client_id = ?
+             ORDER BY t.display_order ASC, t.name ASC",
+            [$clientId]
+        );
+
+        $esetDetail = $this->db->fetchAll(
+            "SELECT COALESCE(el.product_name, 'Sans produit') AS product_name,
+                    el.state,
+                    SUM(el.quantity)    AS seats_total,
+                    SUM(el.usage_count) AS seats_used,
+                    COUNT(el.id)        AS lic_count,
+                    GROUP_CONCAT(el.public_license_key ORDER BY el.public_license_key SEPARATOR ', ') AS license_keys,
+                    MIN(el.expiration_date) AS expiration_date
+             FROM client_provider_mappings cpm
+             JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
+             JOIN eset_licenses el  ON el.eset_company_id = ec.eset_company_id
+             WHERE cpm.client_id = ?
+               AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'eset' LIMIT 1)
+               AND cpm.is_confirmed = 1
+             GROUP BY el.product_name, el.state
+             ORDER BY el.product_name",
+            [$clientId]
+        );
+
+        $bcDetail = $this->db->fetchAll(
+            "SELECT bs.offer_name AS product_name, bs.quantity, bs.assigned_licenses
+             FROM client_provider_mappings cpm
+             JOIN be_cloud_customers bcc
+                  ON bcc.be_cloud_customer_id = cpm.provider_client_id
+                  AND bcc.connection_id = cpm.connection_id
+             JOIN be_cloud_subscriptions bs ON bs.be_cloud_customer_id = bcc.be_cloud_customer_id
+             WHERE cpm.client_id = ?
+               AND cpm.is_confirmed = 1
+               AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'becloud' LIMIT 1)
+             ORDER BY bs.offer_name",
+            [$clientId]
+        );
+
+        $ninjaDetail = $this->db->fetchAll(
+            "SELECT no2.name, no2.rmm_count, no2.nms_count, no2.mdm_count,
+                    no2.vmm_count, no2.cloud_count
+             FROM client_provider_mappings cpm
+             JOIN ninjaone_organizations no2
+                  ON CAST(no2.ninjaone_org_id AS CHAR) COLLATE utf8mb4_general_ci = cpm.provider_client_id
+                  AND no2.connection_id = cpm.connection_id
+             WHERE cpm.client_id = ?
+               AND cpm.is_confirmed = 1
+               AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'ninjaone' LIMIT 1)
+             ORDER BY no2.name",
+            [$clientId]
+        );
+
+        // Rendu du template HTML
+        ob_start();
+        include APP_ROOT . '/resources/views/licenses/report.php';
+        $html = ob_get_clean();
+
+        // Génération PDF via Dompdf
+        $options = new \Dompdf\Options();
+        $options->set('defaultFont', 'DejaVu Sans');
+        $options->set('isRemoteEnabled', false);
+
+        $dompdf = new \Dompdf\Dompdf($options);
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+
+        $slug     = preg_replace('/[^a-z0-9]+/i', '-', $client['client_number'] ?: $client['name']);
+        $filename = 'rapport-licences-' . strtolower(trim($slug, '-')) . '-' . date('Y-m-d') . '.pdf';
+
+        $dompdf->stream($filename, ['Attachment' => true]);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────
 
-    private function buildWhere(string $search, array $tagIds): array
+    private function buildWhere(string $search, array $tagIds, string $tagLogic = 'or'): array
     {
-        $conditions = [];
-        $params     = [];
+        $conditions   = [];
+        $params       = [];
+        $tagHavingSql = '';
 
         if ($search !== '') {
             $conditions[] = "(c.name LIKE ? OR c.client_number LIKE ?)";
@@ -195,14 +290,18 @@ class LicenseController extends Controller
             $placeholders = implode(',', array_fill(0, count($tagIds), '?'));
             $conditions[] = "ct.tag_id IN ($placeholders)";
             $params       = array_merge($params, $tagIds);
+            // Mode ET : le client doit posséder TOUS les tags sélectionnés
+            if ($tagLogic === 'and' && count($tagIds) > 1) {
+                $tagHavingSql = 'COUNT(DISTINCT ct.tag_id) = ' . count($tagIds);
+            }
         }
 
         $whereSql = $conditions ? 'WHERE c.is_active = 1 AND ' . implode(' AND ', $conditions) : 'WHERE c.is_active = 1';
 
-        return [$whereSql, $params];
+        return [$whereSql, $params, $tagHavingSql];
     }
 
-    private function buildHaving(array $providerFilters, bool $showAll): string
+    private function buildHaving(array $providerFilters, bool $showAll, string $providerLogic = 'or', string $tagHavingSql = ''): string
     {
         // Colonnes des derived tables (bc_agg, ninja_agg) doivent être enveloppées dans MAX()
         // pour satisfaire ONLY_FULL_GROUP_BY — équivalent ici car 1 row par client_id.
@@ -218,19 +317,24 @@ class LicenseController extends Controller
             $parts[] = '(COALESCE(MAX(ninja_agg.ninja_rmm), 0) + COALESCE(MAX(ninja_agg.ninja_nms), 0) + COALESCE(MAX(ninja_agg.ninja_mdm), 0)) > 0';
         }
 
-        if (!empty($parts)) {
-            return 'HAVING (' . implode(' OR ', $parts) . ')';
+        $havingParts = [];
+
+        if ($tagHavingSql !== '') {
+            $havingParts[] = $tagHavingSql;
         }
 
-        if (!$showAll) {
-            return 'HAVING (
+        if (!empty($parts)) {
+            $glue = $providerLogic === 'and' ? ' AND ' : ' OR ';
+            $havingParts[] = '(' . implode($glue, $parts) . ')';
+        } elseif (!$showAll) {
+            $havingParts[] = '(
                 COUNT(DISTINCT el.id) > 0
                 OR COALESCE(MAX(bc_agg.bc_sub_count), 0) > 0
                 OR (COALESCE(MAX(ninja_agg.ninja_rmm), 0) + COALESCE(MAX(ninja_agg.ninja_nms), 0) + COALESCE(MAX(ninja_agg.ninja_mdm), 0)) > 0
             )';
         }
 
-        return '';
+        return $havingParts ? 'HAVING ' . implode(' AND ', $havingParts) : '';
     }
 
     private function bcJoin(): string
