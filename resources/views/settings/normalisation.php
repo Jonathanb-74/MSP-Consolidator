@@ -11,7 +11,7 @@ $customs     = array_filter($rules, fn($r) => $r['type'] === 'custom');
             <h4 class="mb-0"><i class="bi bi-scissors me-2 text-body-secondary"></i>Normalisation des noms</h4>
             <p class="text-body-secondary small mb-0 mt-1">
                 Ces règles sont appliquées avant la comparaison par similarité lors de l'auto-mapping fournisseur ↔ client.
-                Ajoutez les suffixes récurrents de vos noms fournisseurs (ex&nbsp;: <code> - LTI</code>, <code> - FCI</code>).
+                Ajoutez les suffixes récurrents de vos noms fournisseurs (ex&nbsp;: <code> - Agence</code>, <code> - Groupe</code>).
             </p>
         </div>
     </div>
@@ -36,7 +36,7 @@ $customs     = array_filter($rules, fn($r) => $r['type'] === 'custom');
     <div class="card-body border-bottom d-none" id="formAddCustom">
         <div class="d-flex gap-2 align-items-center">
             <input type="text" class="form-control form-control-sm" id="inputCustomValue"
-                   placeholder="ex: &nbsp;- LTI" style="max-width:280px">
+                   placeholder="ex : - Agence" style="max-width:280px">
             <button class="btn btn-primary btn-sm" onclick="addRule('custom')">
                 <i class="bi bi-check-lg me-1"></i>Enregistrer
             </button>
@@ -51,7 +51,7 @@ $customs     = array_filter($rules, fn($r) => $r['type'] === 'custom');
 
     <div class="card-body p-0">
         <table class="table table-sm mb-0 align-middle" id="tableCustom">
-            <thead class="table-light">
+            <thead class="table-dark">
                 <tr>
                     <th class="ps-3">Valeur</th>
                     <th style="width:90px">État</th>
@@ -96,7 +96,7 @@ $customs     = array_filter($rules, fn($r) => $r['type'] === 'custom');
         </table>
     </div>
     <div class="card-footer text-body-secondary small">
-        Exemples&nbsp;: <code> - LTI</code>, <code> - FCI</code>, <code> (test)</code>
+        Exemples&nbsp;: <code> - Agence</code>, <code> - Groupe</code>, <code> (test)</code>
     </div>
 </div>
 
@@ -132,7 +132,7 @@ $customs     = array_filter($rules, fn($r) => $r['type'] === 'custom');
 
     <div class="card-body p-0">
         <table class="table table-sm mb-0 align-middle" id="tableLegal">
-            <thead class="table-light">
+            <thead class="table-dark">
                 <tr>
                     <th class="ps-3">Valeur</th>
                     <th style="width:90px">État</th>
@@ -177,8 +177,7 @@ $customs     = array_filter($rules, fn($r) => $r['type'] === 'custom');
         </table>
     </div>
     <div class="card-footer text-body-secondary small">
-        Pré-rempli avec les formes françaises courantes. Exécutez la migration
-        <code>004_normalization_rules.sql</code> si la table est vide.
+        Pré-rempli avec les formes juridiques françaises courantes.
     </div>
 </div>
 

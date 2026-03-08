@@ -64,7 +64,7 @@ $qp = compact('search', 'tagId', 'state', 'page', 'perPage');
         <a href="#" class="btn btn-sm btn-outline-secondary" id="btnExportCsv">
             <i class="bi bi-download me-1"></i>CSV
         </a>
-        <button class="btn btn-sm btn-success" id="btnPageSync" onclick="window.openSyncModal?.()">
+        <button class="btn btn-sm btn-primary" id="btnPageSync" onclick="window.openSyncModal?.(null, 'eset')">
             <i class="bi bi-arrow-clockwise me-1"></i>Sync maintenant
         </button>
     </div>
@@ -133,7 +133,7 @@ $qp = compact('search', 'tagId', 'state', 'page', 'perPage');
                     <i class="bi bi-shield-lock fs-1 d-block mb-2 opacity-25"></i>
                     Aucune licence trouvée.
                     <?php if (!$lastSync): ?>
-                    <br><button class="btn btn-sm btn-success mt-2" id="btnFirstSync">
+                    <br><button class="btn btn-sm btn-primary mt-2" id="btnFirstSync">
                         <i class="bi bi-arrow-clockwise me-1"></i>Lancer la première sync
                     </button>
                     <?php endif; ?>
@@ -318,7 +318,7 @@ $queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'sta
 
 <script>
 // "Lancer la première sync" (table vide)
-document.getElementById('btnFirstSync')?.addEventListener('click', () => window.openSyncModal?.());
+document.getElementById('btnFirstSync')?.addEventListener('click', () => window.openSyncModal?.(null, 'eset'));
 
 // Export CSV côté client (table visible)
 document.getElementById('btnExportCsv')?.addEventListener('click', function(e) {

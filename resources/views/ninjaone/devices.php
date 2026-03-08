@@ -130,7 +130,7 @@ $extraParams = array_filter([
 <div class="card">
     <div class="card-body p-0">
         <table class="table table-sm table-hover mb-0 align-middle">
-            <thead class="table-light">
+            <thead class="table-dark">
                 <tr>
                     <th class="ps-3" style="width:30px"></th>
                     <th>

@@ -16,7 +16,7 @@
 
             <p class="mb-2 fw-semibold">Format ERP (export logiciel de gestion) :</p>
             <table class="table table-sm table-bordered mb-3">
-                <thead class="table-secondary">
+                <thead class="table-dark">
                     <tr><th>Colonne Excel</th><th>Obligatoire</th><th>Description</th></tr>
                 </thead>
                 <tbody>
@@ -31,7 +31,7 @@
 
             <p class="mb-2 fw-semibold">Format personnalisé (colonnes en anglais) :</p>
             <table class="table table-sm table-bordered mb-2">
-                <thead class="table-secondary">
+                <thead class="table-dark">
                     <tr><th>Colonne Excel</th><th>Obligatoire</th><th>Description</th></tr>
                 </thead>
                 <tbody>

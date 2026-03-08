@@ -335,7 +335,7 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                                     <p class="text-body-secondary small mb-0">Aucune licence synchronisée.</p>
                                 <?php else: ?>
                                     <table class="table table-sm mb-0" style="font-size:.8rem">
-                                        <thead>
+                                        <thead class="table-dark">
                                             <tr>
                                                 <th>Produit</th>
                                                 <th class="text-center">Lic</th>

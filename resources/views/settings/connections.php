@@ -67,7 +67,7 @@ function syncStatusBadge(?string $status): string {
                 </div>
             <?php else: ?>
                 <table class="table table-sm mb-0 align-middle">
-                    <thead class="table-active">
+                    <thead class="table-dark">
                         <tr>
                             <th>Nom</th>
                             <th>Clé config</th>

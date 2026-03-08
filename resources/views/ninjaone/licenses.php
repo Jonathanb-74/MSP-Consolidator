@@ -51,7 +51,7 @@ $qp = compact('search', 'tagId', 'group', 'page', 'perPage');
         <a href="#" class="btn btn-sm btn-outline-secondary" id="btnExportCsv">
             <i class="bi bi-download me-1"></i>CSV
         </a>
-        <button class="btn btn-sm btn-warning text-dark" id="btnPageSync" onclick="window.openSyncModal?.(null, 'ninjaone')">
+        <button class="btn btn-sm btn-primary" id="btnPageSync" onclick="window.openSyncModal?.(null, 'ninjaone')">
             <i class="bi bi-arrow-clockwise me-1"></i>Sync maintenant
         </button>
     </div>
@@ -134,7 +134,7 @@ $qp = compact('search', 'tagId', 'group', 'page', 'perPage');
                     <i class="bi bi-hdd-network fs-1 d-block mb-2 opacity-25"></i>
                     Aucune organisation trouvée.
                     <?php if (!$lastSync): ?>
-                    <br><button class="btn btn-sm btn-warning text-dark mt-2" id="btnFirstSync">
+                    <br><button class="btn btn-sm btn-primary mt-2" id="btnFirstSync">
                         <i class="bi bi-arrow-clockwise me-1"></i>Lancer la première sync
                     </button>
                     <?php endif; ?>
@@ -258,7 +258,7 @@ $queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'gro
 </div>
 
 <script>
-document.getElementById('btnFirstSync')?.addEventListener('click', () => window.openSyncModal?.());
+document.getElementById('btnFirstSync')?.addEventListener('click', () => window.openSyncModal?.(null, 'ninjaone'));
 
 document.getElementById('btnExportCsv')?.addEventListener('click', function(e) {
     e.preventDefault();

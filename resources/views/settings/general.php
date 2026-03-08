@@ -24,7 +24,7 @@
     </div>
     <div class="card-body p-0">
         <table class="table table-sm mb-0 align-middle">
-            <thead class="table-light">
+            <thead class="table-dark">
                 <tr>
                     <th class="ps-3" style="width:40%">Paramètre</th>
                     <th>Valeur</th>
