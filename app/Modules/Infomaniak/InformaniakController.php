@@ -147,6 +147,109 @@ class InformaniakController extends Controller
     }
 
     /**
+     * GET /infomaniak/products — Liste complète des produits Infomaniak
+     */
+    public function products(array $params = []): void
+    {
+        $search      = trim($_GET['search'] ?? '');
+        $serviceName = $_GET['service_name'] ?? '';
+        $sortBy      = $_GET['sort'] ?? 'client';
+        $sortDir     = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
+        $page        = max(1, (int)($_GET['page'] ?? 1));
+        $_pp         = (int)($_GET['perPage'] ?? 50);
+        $perPage     = in_array($_pp, [25, 50, 100, 250]) ? $_pp : 50;
+        $offset      = ($page - 1) * $perPage;
+
+        $allowedSorts = [
+            'client'   => 'c.name',
+            'service'  => 'ip.service_name',
+            'name'     => 'ip.internal_name',
+            'customer' => 'ip.customer_name',
+            'expires'  => 'ip.expired_at',
+            'account'  => 'ia.name',
+        ];
+        $orderCol = $allowedSorts[$sortBy] ?? 'c.name';
+
+        $conditions  = [];
+        $whereParams = [];
+
+        if ($search !== '') {
+            $conditions[]  = "(c.name LIKE ? OR ip.customer_name LIKE ? OR ip.internal_name LIKE ? OR ia.name LIKE ?)";
+            $like          = '%' . $search . '%';
+            $whereParams   = array_merge($whereParams, [$like, $like, $like, $like]);
+        }
+
+        if ($serviceName !== '') {
+            $conditions[]  = "ip.service_name = ?";
+            $whereParams[] = $serviceName;
+        }
+
+        $whereSql = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
+
+        $baseSql = "FROM infomaniak_products ip
+            JOIN infomaniak_accounts ia
+                ON ia.infomaniak_account_id = ip.infomaniak_account_id
+                AND ia.connection_id = ip.connection_id
+            JOIN provider_connections pc ON pc.id = ip.connection_id
+            LEFT JOIN client_provider_mappings cpm
+                ON cpm.provider_client_id = CAST(ia.infomaniak_account_id AS CHAR) COLLATE utf8mb4_general_ci
+                AND cpm.connection_id = ia.connection_id
+                AND cpm.is_confirmed = 1
+            LEFT JOIN clients c ON c.id = cpm.client_id
+            $whereSql";
+
+        $total = $this->db->count("SELECT COUNT(*) $baseSql", $whereParams);
+
+        $products = $this->db->fetchAll(
+            "SELECT
+                ip.id                    AS product_row_id,
+                ip.infomaniak_product_id,
+                ip.service_name,
+                ip.service_id,
+                ip.internal_name,
+                ip.customer_name,
+                ip.description,
+                ip.expired_at,
+                ip.is_trial,
+                ip.is_free,
+                ip.last_sync_at,
+                ia.name                  AS account_name,
+                ia.infomaniak_account_id,
+                pc.name                  AS connection_name,
+                c.id                     AS client_id,
+                c.name                   AS client_name,
+                c.client_number
+             $baseSql
+             ORDER BY $orderCol $sortDir, ip.service_name ASC, ip.internal_name ASC
+             LIMIT $perPage OFFSET $offset",
+            $whereParams
+        );
+
+        $serviceNames = $this->db->fetchAll(
+            "SELECT DISTINCT service_name FROM infomaniak_products
+             WHERE connection_id IN (
+                 SELECT pc.id FROM provider_connections pc
+                 JOIN providers p ON p.id = pc.provider_id WHERE p.code = 'infomaniak'
+             ) AND service_name IS NOT NULL
+             ORDER BY service_name ASC"
+        );
+
+        $this->render('infomaniak/products', [
+            'pageTitle'    => 'Tous les produits Infomaniak',
+            'breadcrumbs'  => ['Dashboard' => '/', 'Infomaniak' => '/infomaniak/licenses', 'Tous les produits' => null],
+            'products'     => $products,
+            'total'        => $total,
+            'page'         => $page,
+            'perPage'      => $perPage,
+            'search'       => $search,
+            'serviceName'  => $serviceName,
+            'sortBy'       => $sortBy,
+            'sortDir'      => $sortDir,
+            'serviceNames' => $serviceNames,
+        ]);
+    }
+
+    /**
      * GET /infomaniak/sync-logs — Historique des synchronisations
      */
     public function syncLogs(array $params = []): void

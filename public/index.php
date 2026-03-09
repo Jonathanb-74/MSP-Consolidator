@@ -93,6 +93,7 @@ $router->get('/ninjaone/sync-status',  [NinjaOneController::class, 'syncStatus']
 
 // Infomaniak
 $router->get('/infomaniak/licenses',     [InformaniakController::class, 'licenses']);
+$router->get('/infomaniak/products',     [InformaniakController::class, 'products']);
 $router->get('/infomaniak/sync-logs',    [InformaniakController::class, 'syncLogs']);
 $router->post('/infomaniak/sync',        [InformaniakController::class, 'sync']);
 $router->post('/infomaniak/sync-cancel', [InformaniakController::class, 'syncCancel']);

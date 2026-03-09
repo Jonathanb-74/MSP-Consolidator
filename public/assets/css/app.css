@@ -114,6 +114,22 @@ main {
     --bs-breadcrumb-margin-bottom: 0;
 }
 
+/* ── Table warning — texte forcé en sombre (lisible sur fond jaune) ── */
+.table-warning,
+tr.table-warning {
+    --bs-table-color: #1a1a1a;
+    --bs-body-color: #1a1a1a;
+    --bs-secondary-color: rgba(0,0,0,0.55);
+    --bs-link-color: #1a1a1a;
+}
+tr.table-warning td,
+tr.table-warning th,
+tr.table-warning td small,
+tr.table-warning td code,
+tr.table-warning td a:not(.badge):not(.btn) {
+    color: #1a1a1a !important;
+}
+
 /* ── Dark mode overrides ───────────────────────────────────── */
 [data-bs-theme="dark"] {
     --bs-body-bg: #121212;

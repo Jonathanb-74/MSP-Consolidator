@@ -121,15 +121,6 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
     </div>
     <div class="card-body">
 
-        <div class="alert alert-<?= $htaccessOk ? 'success' : 'warning' ?> d-flex align-items-center gap-2 py-2 mb-3">
-            <i class="bi bi-<?= $htaccessOk ? 'check-circle-fill' : 'exclamation-triangle-fill' ?>"></i>
-            <?php if ($htaccessOk): ?>
-                <span><strong>.htaccess pris en compte</strong> — <code>max_execution_time</code> = <?= $maxExec === 0 ? '0 (illimité)' : $maxExec . 's' ?></span>
-            <?php else: ?>
-                <span><strong>.htaccess ignoré ou non appliqué</strong> — <code>max_execution_time</code> = <?= $maxExec ?>s. La synchronisation risque d'être interrompue.</span>
-            <?php endif; ?>
-        </div>
-
         <div class="row g-3">
             <div class="col-md-6">
                 <h6 class="text-body-secondary text-uppercase small fw-semibold mb-2">Configuration PHP</h6>
@@ -158,6 +149,19 @@ $htaccessOk = $maxExec === 0 || $maxExec > 30;
                                     <span class="badge bg-warning text-dark ms-1">Trop court</span>
                                 <?php else: ?>
                                     <span class="badge bg-success ms-1">OK</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-body-secondary">.htaccess</td>
+                            <td>
+                                <?php if ($htaccessOk): ?>
+                                    <i class="bi bi-check-circle-fill text-success me-1"></i>
+                                    <span class="text-success fw-medium">Pris en compte</span>
+                                <?php else: ?>
+                                    <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
+                                    <span class="text-warning fw-medium">Ignoré ou non appliqué</span>
+                                    <div class="text-body-secondary small mt-1">La synchronisation risque d'être interrompue.</div>
                                 <?php endif; ?>
                             </td>
                         </tr>

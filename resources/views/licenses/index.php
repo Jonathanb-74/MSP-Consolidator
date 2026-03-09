@@ -2,6 +2,7 @@
 /** @var array $clients */
 /** @var array $esetDetails */
 /** @var array $ikDetails */
+/** @var array $ninjaDevices */
 /** @var int $total */
 /** @var int $page */
 /** @var int $perPage */
@@ -225,8 +226,9 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                 $ninjaTot    = $ninjaRmm + $ninjaNms + $ninjaMdm;
                 $ikCount       = (int)($client['ik_product_count'] ?? 0);
                 $detailId      = 'detail-' . $client['id'];
-                $clientDetails = $esetDetails[$client['id']] ?? [];
-                $ikProducts    = $ikDetails[$client['id']] ?? [];
+                $clientDetails  = $esetDetails[$client['id']] ?? [];
+                $ikProducts     = $ikDetails[$client['id']] ?? [];
+                $ninjaGroups    = $ninjaDevices[$client['id']] ?? [];
             ?>
             <!-- Ligne résumé -->
             <tr class="align-middle"
@@ -238,13 +240,6 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                 <td class="fw-medium">
                     <i class="bi bi-chevron-right expand-icon me-1 small text-body-secondary" style="transition:transform .2s"></i>
                     <?= htmlspecialchars($client['name']) ?>
-                    <a href="/licenses/<?= $client['id'] ?>/report"
-                       class="btn btn-xs btn-outline-danger py-0 px-1 ms-1"
-                       title="Exporter le rapport PDF"
-                       onclick="event.stopPropagation()"
-                       style="font-size:.7rem">
-                        <i class="bi bi-file-earmark-pdf"></i>
-                    </a>
                 </td>
                 <td>
                     <div class="d-flex flex-wrap gap-1">
@@ -325,6 +320,14 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
             <tr class="collapse" id="<?= $detailId ?>">
                 <td colspan="10" class="p-0">
                     <div class="px-4 py-3 border-start border-4 border-primary-subtle bg-body-secondary">
+                        <div class="d-flex justify-content-end mb-2">
+                            <a href="/licenses/<?= $client['id'] ?>/report"
+                               class="btn btn-sm btn-outline-danger py-0 px-2"
+                               title="Exporter le rapport PDF"
+                               style="font-size:.8rem">
+                                <i class="bi bi-file-earmark-pdf me-1"></i>Rapport PDF
+                            </a>
+                        </div>
                         <div class="row g-3">
 
                             <!-- Bloc ESET -->
@@ -426,32 +429,90 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                             <?php endif; ?>
 
                             <!-- Bloc NinjaOne -->
-                            <?php if ($ninjaTot > 0 || $ninjaVmm > 0 || $ninjaCloud > 0): ?>
+                            <?php if ($ninjaTot > 0 || $ninjaVmm > 0 || $ninjaCloud > 0):
+                                $ninjaLicGroups = [
+                                    'RMM'               => ['badge' => 'bg-success',  'label' => 'RMM',              'count' => $ninjaRmm],
+                                    'NMS'               => ['badge' => 'bg-info',     'label' => 'NMS',              'count' => $ninjaNms],
+                                    'MDM'               => ['badge' => 'bg-primary',  'label' => 'MDM',              'count' => $ninjaMdm],
+                                    'VMM'               => ['badge' => 'bg-secondary','label' => 'VMM (no license)', 'count' => $ninjaVmm],
+                                    'CLOUD_MONITORING'  => ['badge' => 'bg-secondary','label' => 'Cloud (no license)','count' => $ninjaCloud],
+                                ];
+                            ?>
                             <div class="col-12">
-                                <div class="d-flex align-items-center mb-2">
-                                    <i class="bi bi-hdd-network text-warning me-2"></i>
-                                    <strong class="small">NinjaOne</strong>
-                                    <div class="d-flex flex-wrap gap-1 ms-2">
-                                        <?php if ($ninjaRmm > 0): ?>
-                                        <span class="badge bg-success"><?= $ninjaRmm ?> RMM</span>
-                                        <?php endif; ?>
-                                        <?php if ($ninjaNms > 0): ?>
-                                        <span class="badge bg-info"><?= $ninjaNms ?> NMS</span>
-                                        <?php endif; ?>
-                                        <?php if ($ninjaMdm > 0): ?>
-                                        <span class="badge bg-primary"><?= $ninjaMdm ?> MDM</span>
-                                        <?php endif; ?>
-                                        <?php if ($ninjaVmm > 0): ?>
-                                        <span class="badge bg-secondary" title="no license"><?= $ninjaVmm ?> VMM</span>
-                                        <?php endif; ?>
-                                        <?php if ($ninjaCloud > 0): ?>
-                                        <span class="badge bg-secondary" title="no license"><?= $ninjaCloud ?> Cloud</span>
-                                        <?php endif; ?>
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-hdd-network text-warning me-2"></i>
+                                        <strong class="small">NinjaOne</strong>
+                                        <span class="badge bg-secondary ms-2"><?= $ninjaTot + $ninjaVmm + $ninjaCloud ?> équipement<?= ($ninjaTot + $ninjaVmm + $ninjaCloud) > 1 ? 's' : '' ?></span>
                                     </div>
+                                    <a href="/ninjaone/devices?client_id=<?= $client['id'] ?>" class="small text-decoration-none">
+                                        <i class="bi bi-box-arrow-up-right me-1"></i>Tous les équipements
+                                    </a>
                                 </div>
-                                <a href="/ninjaone/devices?client_id=<?= $client['id'] ?>" class="small">
-                                    <i class="bi bi-hdd-network me-1"></i>Voir les équipements
-                                </a>
+                                <table class="table table-sm mb-0" style="font-size:.8rem">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Type de licence</th>
+                                            <th class="text-center">Équipements</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($ninjaLicGroups as $groupKey => $groupInfo):
+                                        if ($groupInfo['count'] === 0) continue;
+                                        $devicesForGroup = $ninjaGroups[$groupKey] ?? [];
+                                        $toggleId = 'ninja-' . $client['id'] . '-' . $groupKey;
+                                    ?>
+                                        <tr>
+                                            <td><span class="badge <?= $groupInfo['badge'] ?>"><?= $groupInfo['label'] ?></span></td>
+                                            <td class="text-center"><?= $groupInfo['count'] ?></td>
+                                            <td class="text-end">
+                                                <?php if (!empty($devicesForGroup)): ?>
+                                                <button class="btn btn-xs btn-outline-secondary py-0 px-1 btn-ninja-toggle"
+                                                        data-target="<?= $toggleId ?>"
+                                                        style="font-size:.7rem">
+                                                    Afficher
+                                                </button>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                        <?php if (!empty($devicesForGroup)): ?>
+                                        <tr id="<?= $toggleId ?>" class="d-none">
+                                            <td colspan="3" class="p-0 ps-3 pb-2">
+                                                <table class="table table-sm mb-0 border-start border-2 border-secondary-subtle" style="font-size:.75rem">
+                                                    <thead class="table-secondary">
+                                                        <tr>
+                                                            <th>Équipement</th>
+                                                            <th>DNS</th>
+                                                            <th class="text-center">État</th>
+                                                            <th>Dernier contact</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                    <?php foreach ($devicesForGroup as $dev): ?>
+                                                        <tr>
+                                                            <td><?= htmlspecialchars($dev['display_name']) ?></td>
+                                                            <td class="text-body-secondary"><?= htmlspecialchars($dev['dns_name'] ?? '—') ?></td>
+                                                            <td class="text-center">
+                                                                <?php if ($dev['is_online']): ?>
+                                                                    <span class="badge bg-success" style="font-size:.6rem">En ligne</span>
+                                                                <?php else: ?>
+                                                                    <span class="badge bg-secondary" style="font-size:.6rem">Hors ligne</span>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                            <td class="text-body-secondary">
+                                                                <?= $dev['last_contact'] ? date('d/m H:i', strtotime($dev['last_contact'])) : '—' ?>
+                                                            </td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                    </tbody>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
                             </div>
                             <?php endif; ?>
 
@@ -605,6 +666,17 @@ document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function(row) {
         const isOpen = target.classList.contains('show');
         icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
     });
+});
+
+// ── NinjaOne : toggle affichage équipements par type de licence ─────────────
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.btn-ninja-toggle');
+    if (!btn) return;
+    e.stopPropagation();
+    const target = document.getElementById(btn.dataset.target);
+    if (!target) return;
+    const hidden = target.classList.toggle('d-none');
+    btn.textContent = hidden ? 'Afficher' : 'Masquer';
 });
 
 // ── Historique licence ──────────────────────────────────────────────────────

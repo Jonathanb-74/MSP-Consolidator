@@ -24,7 +24,7 @@
     <div class="card-body p-3">
         <p class="small text-body-secondary mb-0">
             <i class="bi bi-info-circle me-1"></i>
-            Faites glisser les tags pour modifier leur ordre d'affichage. Cet ordre est utilisé dans la liste des clients et dans la vue ESET.
+            Faites glisser les tags pour modifier leur ordre d'affichage. Cet ordre est utilisé dans toutes les vues de l'application.
         </p>
     </div>
 </div>

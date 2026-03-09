@@ -102,6 +102,11 @@
         <p class="text-uppercase text-body-secondary small fw-semibold px-1 mb-1">Paramètres</p>
         <ul class="nav nav-pills flex-column mb-auto">
             <li class="nav-item">
+                <a href="/settings/general" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/settings/general') ? 'active' : '' ?>">
+                    <i class="bi bi-sliders me-2"></i>Général
+                </a>
+            </li>
+            <li class="nav-item">
                 <a href="/settings/connections" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/settings/connections') ? 'active' : '' ?>">
                     <i class="bi bi-plug me-2"></i>Connexions
                 </a>
@@ -109,11 +114,6 @@
             <li class="nav-item">
                 <a href="/settings/normalisation" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/settings/normalisation') ? 'active' : '' ?>">
                     <i class="bi bi-scissors me-2"></i>Normalisation
-                </a>
-            </li>
-            <li class="nav-item">
-                <a href="/settings/general" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/settings/general') ? 'active' : '' ?>">
-                    <i class="bi bi-sliders me-2"></i>Général
                 </a>
             </li>
         </ul>

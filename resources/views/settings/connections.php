@@ -66,7 +66,15 @@ function syncStatusBadge(?string $status): string {
                     Aucune connexion définie dans <code>config/providers.php</code>.
                 </div>
             <?php else: ?>
-                <table class="table table-sm mb-0 align-middle">
+                <table class="table table-sm mb-0 align-middle" style="table-layout:fixed">
+                    <colgroup>
+                        <col style="width:28%">
+                        <col style="width:22%">
+                        <col style="width:18%">
+                        <col style="width:20%">
+                        <col style="width:6%">
+                        <col style="width:6%">
+                    </colgroup>
                     <thead class="table-dark">
                         <tr>
                             <th>Nom</th>
@@ -147,13 +155,6 @@ function syncStatusBadge(?string $status): string {
                 </table>
             <?php endif; ?>
         </div>
-        <?php if (in_array($code, ['eset', 'becloud', 'ninjaone'])): ?>
-        <div class="card-footer text-body-secondary small">
-            <i class="bi bi-info-circle me-1"></i>
-            Pour ajouter une connexion, éditez <code>config/providers.php</code>,
-            puis cliquez sur <strong>Synchroniser depuis la config</strong>.
-        </div>
-        <?php endif; ?>
     </div>
 <?php endforeach; ?>
 

@@ -186,6 +186,27 @@ class LicenseController extends Controller
             $ikDetails[$row['client_id']][] = $row;
         }
 
+        // Détail NinjaOne : équipements individuels par client et node_group
+        $ninjaDetailsRaw = $this->db->fetchAll(
+            "SELECT cpm3.client_id, nd.node_group, nd.display_name, nd.dns_name,
+                    nd.is_online, nd.last_contact, nd.os_name
+             FROM ninjaone_devices nd
+             JOIN ninjaone_organizations no2
+                  ON no2.ninjaone_org_id = nd.ninjaone_org_id
+                  AND no2.connection_id = nd.connection_id
+             JOIN client_provider_mappings cpm3
+                  ON CAST(no2.ninjaone_org_id AS CHAR) COLLATE utf8mb4_general_ci = cpm3.provider_client_id
+                  AND cpm3.connection_id = no2.connection_id
+                  AND cpm3.is_confirmed = 1
+             JOIN providers pr ON pr.id = cpm3.provider_id AND pr.code = 'ninjaone'
+             ORDER BY cpm3.client_id, nd.node_group, nd.display_name"
+        );
+
+        $ninjaDevices = [];
+        foreach ($ninjaDetailsRaw as $row) {
+            $ninjaDevices[$row['client_id']][$row['node_group']][] = $row;
+        }
+
         $allTags = $this->db->fetchAll(
             "SELECT * FROM tags ORDER BY display_order ASC, name ASC"
         );
@@ -196,6 +217,7 @@ class LicenseController extends Controller
             'clients'         => $clients,
             'esetDetails'     => $esetDetails,
             'ikDetails'       => $ikDetails,
+            'ninjaDevices'    => $ninjaDevices,
             'total'           => $total,
             'page'            => $page,
             'perPage'         => $perPage,

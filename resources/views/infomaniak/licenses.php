@@ -51,6 +51,9 @@ $qp = compact('search', 'tagId', 'serviceName', 'page', 'perPage');
         <?php endif; ?>
     </div>
     <div class="d-flex gap-2 align-items-center">
+        <a href="/infomaniak/products" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-list-ul me-1"></i>Tous les produits
+        </a>
         <a href="/mapping?provider=infomaniak" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-link-45deg me-1"></i>Mapping
         </a>
