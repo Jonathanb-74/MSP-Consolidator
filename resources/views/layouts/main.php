@@ -35,6 +35,11 @@
                     <i class="bi bi-grid-3x3 me-2"></i>Récap Licences
                 </a>
             </li>
+            <li class="nav-item">
+                <a href="/calendar" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/calendar') ? 'active' : '' ?>">
+                    <i class="bi bi-calendar3 me-2"></i>Calendrier
+                </a>
+            </li>
         </ul>
 
         <hr>
