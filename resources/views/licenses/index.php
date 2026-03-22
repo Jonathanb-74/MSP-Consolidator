@@ -1,6 +1,8 @@
 <?php
 /** @var array $clients */
 /** @var array $esetDetails */
+/** @var array $bcLicDetails */
+/** @var array $bcSubDetails */
 /** @var array $ikDetails */
 /** @var array $ninjaDevices */
 /** @var int $total */
@@ -218,15 +220,21 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                 $bcTotal     = (int)($client['bc_seats_total'] ?? 0);
                 $bcUsed      = (int)($client['bc_seats_used'] ?? 0);
                 $bcOver      = $bcTotal > 0 && $bcUsed > $bcTotal;
+                $bcLicCount  = (int)($client['bc_lic_count']    ?? 0);
+                $bcLicTotal  = (int)($client['bc_lic_total']    ?? 0);
+                $bcLicUsed   = (int)($client['bc_lic_consumed'] ?? 0);
+                $bcLicPct    = $bcLicTotal > 0 ? min(100, (int)round($bcLicUsed / $bcLicTotal * 100)) : 0;
                 $ninjaRmm    = (int)($client['ninja_rmm']   ?? 0);
                 $ninjaNms    = (int)($client['ninja_nms']   ?? 0);
                 $ninjaMdm    = (int)($client['ninja_mdm']   ?? 0);
                 $ninjaVmm    = (int)($client['ninja_vmm']   ?? 0);
                 $ninjaCloud  = (int)($client['ninja_cloud'] ?? 0);
                 $ninjaTot    = $ninjaRmm + $ninjaNms + $ninjaMdm;
-                $ikCount       = (int)($client['ik_product_count'] ?? 0);
-                $detailId      = 'detail-' . $client['id'];
+                $ikCount        = (int)($client['ik_product_count'] ?? 0);
+                $detailId       = 'detail-' . $client['id'];
                 $clientDetails  = $esetDetails[$client['id']] ?? [];
+                $bcLicRows      = $bcLicDetails[$client['id']] ?? [];
+                $bcSubRows      = $bcSubDetails[$client['id']] ?? [];
                 $ikProducts     = $ikDetails[$client['id']] ?? [];
                 $ninjaGroups    = $ninjaDevices[$client['id']] ?? [];
             ?>
@@ -271,19 +279,18 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                     <?php endif; ?>
                 </td>
                 <td>
-                    <?php if ($bcCount > 0): ?>
-                        <span class="badge bg-secondary me-1"><?= $bcCount ?> sub</span>
-                        <?php if ($bcOver): ?>
-                            <span class="small fw-semibold text-danger">
-                                <i class="bi bi-exclamation-triangle-fill me-1"></i><?= $bcUsed ?>/<?= $bcTotal ?>
-                            </span>
-                        <?php else: ?>
-                            <span class="small text-body-secondary"><?= $bcUsed ?>/<?= $bcTotal ?></span>
+                    <?php if ($bcCount > 0 || $bcLicCount > 0): ?>
+                        <?php if ($bcCount > 0): ?>
+                        <span class="badge bg-secondary me-1" title="Abonnements"><?= $bcCount ?> sub</span>
                         <?php endif; ?>
+                        <?php if ($bcLicCount > 0): ?>
+                        <span class="badge bg-primary me-1" title="Licences M365"><?= $bcLicCount ?> lic</span>
+                        <span class="small text-body-secondary"><?= $bcLicUsed ?>/<?= $bcLicTotal ?></span>
                         <div class="progress mt-1" style="height:4px;max-width:80px">
-                            <div class="progress-bar text-info <?= $bcOver ? 'bg-danger' : ($bcUsed === $bcTotal ? 'bg-success' : 'bg-info') ?>"
-                                 style="width:100%"></div>
+                            <div class="progress-bar <?= $bcLicPct >= 90 ? 'bg-danger' : ($bcLicPct >= 70 ? 'bg-warning' : 'bg-info') ?>"
+                                 style="width:<?= $bcLicPct ?>%"></div>
                         </div>
+                        <?php endif; ?>
                     <?php else: ?>
                         <span class="text-body-secondary" style="font-size:.78rem;opacity:.6">· non mappé</span>
                     <?php endif; ?>
@@ -408,23 +415,105 @@ $providerLabels = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'ninjaone' => 'Nin
                             <?php endif; ?>
 
                             <!-- Bloc Be-Cloud -->
-                            <?php if ($bcCount > 0): ?>
+                            <?php if ($bcCount > 0 || $bcLicCount > 0): ?>
                             <div class="col-12">
                                 <div class="d-flex align-items-center mb-2">
                                     <i class="bi bi-cloud-check text-info me-2"></i>
                                     <strong class="small">Be-Cloud</strong>
+                                    <?php if ($bcCount > 0): ?>
                                     <span class="badge bg-secondary ms-2"><?= $bcCount ?> abonnement<?= $bcCount > 1 ? 's' : '' ?></span>
-                                    <?php if ($bcOver): ?>
-                                        <span class="badge bg-danger ms-1">
-                                            <i class="bi bi-exclamation-triangle-fill me-1"></i><?= $bcUsed ?>/<?= $bcTotal ?>
-                                        </span>
-                                    <?php else: ?>
-                                        <span class="text-body-secondary small ms-2"><?= $bcUsed ?>/<?= $bcTotal ?> assignés</span>
                                     <?php endif; ?>
+                                    <?php if ($bcLicCount > 0): ?>
+                                    <span class="badge bg-primary ms-1"><?= $bcLicCount ?> licence<?= $bcLicCount > 1 ? 's' : '' ?></span>
+                                    <span class="text-body-secondary small ms-2"><?= $bcLicUsed ?>/<?= $bcLicTotal ?> consommées</span>
+                                    <?php endif; ?>
+                                    <a href="/becloud/licenses?search=<?= urlencode($client['name']) ?>" class="small ms-auto text-decoration-none">
+                                        <i class="bi bi-box-arrow-up-right me-1"></i>Licences
+                                    </a>
+                                    <a href="/becloud/customers?search=<?= urlencode($client['name']) ?>" class="small ms-2 text-decoration-none">
+                                        <i class="bi bi-people me-1"></i>Clients Be-Cloud
+                                    </a>
                                 </div>
-                                <a href="/becloud/licenses?search=<?= urlencode($client['name']) ?>" class="small">
-                                    <i class="bi bi-box-arrow-up-right me-1"></i>Voir les abonnements
-                                </a>
+                                <?php if (!empty($bcSubRows)): ?>
+                                <p class="small text-body-secondary mb-1 fw-medium">Abonnements</p>
+                                <table class="table table-sm mb-3" style="font-size:.8rem">
+                                    <thead class="table-secondary">
+                                        <tr>
+                                            <th>Offre</th>
+                                            <th class="text-center">Statut</th>
+                                            <th class="text-center">Qté</th>
+                                            <th>Début</th>
+                                            <th>Fin</th>
+                                            <th>Fréquence</th>
+                                            <th>Durée</th>
+                                            <th class="text-end">Prix unit.</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($bcSubRows as $subRow):
+                                        $sStatus = $subRow['status'] ?? '';
+                                        $sBadge  = match($sStatus) {
+                                            'Active'    => '<span class="badge bg-success">Actif</span>',
+                                            'Suspended' => '<span class="badge bg-warning text-dark">Suspendu</span>',
+                                            'Deleted'   => '<span class="badge bg-danger">Supprimé</span>',
+                                            default     => '<span class="badge bg-secondary">' . htmlspecialchars($sStatus ?: '?') . '</span>',
+                                        };
+                                        $sPrice    = $subRow['list_price'] ?? null;
+                                        $sCurrency = $subRow['currency'] ?? '';
+                                        $sPriceStr = ($sPrice !== null && $sPrice !== '') ? number_format((float)$sPrice, 2) . ' ' . htmlspecialchars($sCurrency) : '—';
+                                    ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($subRow['offer_name'] ?? '—') ?></td>
+                                        <td class="text-center"><?= $sBadge ?></td>
+                                        <td class="text-center"><?= (int)($subRow['quantity'] ?? 0) ?></td>
+                                        <td><?= !empty($subRow['start_date']) ? date('d/m/Y', strtotime($subRow['start_date'])) : '—' ?></td>
+                                        <td><?= !empty($subRow['end_date'])   ? date('d/m/Y', strtotime($subRow['end_date']))   : '—' ?></td>
+                                        <td class="text-body-secondary"><?= htmlspecialchars($subRow['billing_frequency'] ?? '—') ?></td>
+                                        <td class="text-body-secondary"><?= htmlspecialchars($subRow['term_duration'] ?? '—') ?></td>
+                                        <td class="text-end"><?= $sPriceStr ?></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                                <?php endif; ?>
+                                <?php if (!empty($bcLicRows)): ?>
+                                <p class="small text-body-secondary mb-1 fw-medium">Licences M365</p>
+                                <table class="table table-sm mb-0" style="font-size:.8rem">
+                                    <thead class="table-secondary">
+                                        <tr>
+                                            <th>Licence</th>
+                                            <th class="text-center">Total</th>
+                                            <th class="text-center">Consommées</th>
+                                            <th class="text-center">Disponibles</th>
+                                            <th class="text-center">Suspendues</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($bcLicRows as $licRow):
+                                        $lPct   = $licRow['total_licenses'] > 0
+                                            ? min(100, (int)round($licRow['consumed_licenses'] / $licRow['total_licenses'] * 100)) : 0;
+                                        $lClass = $lPct >= 90 ? 'bg-danger' : ($lPct >= 70 ? 'bg-warning' : 'bg-info');
+                                    ?>
+                                    <tr>
+                                        <td title="SKU : <?= htmlspecialchars($licRow['sku_id']) ?>"><?= htmlspecialchars($licRow['name'] ?: $licRow['sku_id']) ?></td>
+                                        <td class="text-center"><?= (int)$licRow['total_licenses'] ?></td>
+                                        <td class="text-center">
+                                            <?= (int)$licRow['consumed_licenses'] ?>
+                                            <div class="progress mt-1" style="height:3px;min-width:40px">
+                                                <div class="progress-bar <?= $lClass ?>" style="width:<?= $lPct ?>%"></div>
+                                            </div>
+                                        </td>
+                                        <td class="text-center"><?= (int)$licRow['available_licenses'] ?></td>
+                                        <td class="text-center">
+                                            <?php if ($licRow['suspended_licenses'] > 0): ?>
+                                            <span class="text-warning fw-semibold"><?= (int)$licRow['suspended_licenses'] ?></span>
+                                            <?php else: ?>—<?php endif; ?>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                                <?php endif; ?>
                             </div>
                             <?php endif; ?>
 

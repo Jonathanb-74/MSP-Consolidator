@@ -80,18 +80,12 @@
             $_spMeta   = $_sidebarProviderMeta[$_sp['code']] ?? ['icon' => 'bi-box', 'color' => ''];
             $_spActive = isset($_spMeta['prefix']) && str_starts_with($_SERVER['REQUEST_URI'], $_spMeta['prefix']);
             $_spUrl    = $_spMeta['url'] ?? null;
+            if (!$_spUrl) continue;
             ?>
             <li class="nav-item">
-                <?php if ($_spUrl): ?>
-                    <a href="<?= $_spUrl ?>" class="nav-link <?= $_spActive ? 'active' : '' ?>">
-                        <i class="bi <?= $_spMeta['icon'] ?> me-2 <?= $_spMeta['color'] ?>"></i><?= htmlspecialchars($_sp['name']) ?>
-                    </a>
-                <?php else: ?>
-                    <a href="#" class="nav-link disabled text-body-secondary">
-                        <i class="bi <?= $_spMeta['icon'] ?> me-2"></i><?= htmlspecialchars($_sp['name']) ?>
-                        <span class="badge bg-secondary ms-auto small">bientôt</span>
-                    </a>
-                <?php endif; ?>
+                <a href="<?= $_spUrl ?>" class="nav-link <?= $_spActive ? 'active' : '' ?>">
+                    <i class="bi <?= $_spMeta['icon'] ?> me-2 <?= $_spMeta['color'] ?>"></i><?= htmlspecialchars($_sp['name']) ?>
+                </a>
             </li>
         <?php endforeach; ?>
         </ul>

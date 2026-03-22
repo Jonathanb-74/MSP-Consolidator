@@ -20,6 +20,7 @@ use RuntimeException;
 class BeCloudApiClient extends ApiClient
 {
     private BeCloudTokenCache $tokenCache;
+    private string $correlationIdPrefix;
 
     private const PAGE_SIZE = 250;
 
@@ -28,14 +29,17 @@ class BeCloudApiClient extends ApiClient
 
     public function __construct(array $credentials, BeCloudTokenCache $tokenCache)
     {
-        $this->baseUrl            = rtrim($credentials['base_url'], '/');
-        $this->tokenCache         = $tokenCache;
-        $this->authExceptionClass = BeCloudAuthException::class;
+        $this->baseUrl              = rtrim($credentials['base_url'], '/');
+        $this->tokenCache           = $tokenCache;
+        $this->authExceptionClass   = BeCloudAuthException::class;
+        $this->correlationIdPrefix  = $credentials['correlation_id_prefix'] ?? '';
 
         // CloudCockpit requiert X-Tenant sur toutes les requêtes
+        // La valeur (csp_url) est propre à chaque revendeur — ex. "csp.lti.eu"
+        $cspUrl = $credentials['csp_url'] ?? 'csp.lti.eu';
         $this->defaultHeaders = [
             'Accept: application/json',
-            'X-Tenant: portal.cloudcockpit.com',
+            'X-Tenant: ' . $cspUrl,
         ];
     }
 
@@ -111,22 +115,46 @@ class BeCloudApiClient extends ApiClient
         return $all;
     }
 
+    // ── Licenses ───────────────────────────────────────────────────
+
+    /**
+     * Récupère les licences M365/cloud d'un customer.
+     * Nécessite un providerInstanceId issu de ses subscriptions.
+     *
+     * @return array[]
+     */
+    public function getLicensesByCustomer(string $customerId, string $providerInstanceId): array
+    {
+        $response = $this->getAuthenticated(
+            "/v1/Customers/{$customerId}/licenses",
+            ['providerInstanceId' => $providerInstanceId]
+        );
+
+        // L'API retourne soit un tableau direct, soit { items: [...] }
+        if (isset($response['items']) && is_array($response['items'])) {
+            return $response['items'];
+        }
+        return is_array($response) ? $response : [];
+    }
+
     // ── Interne ────────────────────────────────────────────────────
 
     /**
      * GET authentifié avec retry automatique en cas d'expiration de token.
      * X-Correlation-Id (UUID v4) requis par CloudCockpit malgré la doc "optional".
+     * Un préfixe configurable peut être ajouté pour faciliter le dépannage avec le support.
      */
     private function getAuthenticated(string $endpoint, array $query = []): array
     {
-        $token         = $this->tokenCache->getValidToken();
-        $correlationId = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+        $token = $this->tokenCache->getValidToken();
+        $uuid  = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
             mt_rand(0, 0xffff), mt_rand(0, 0xffff),
             mt_rand(0, 0xffff),
             mt_rand(0, 0x0fff) | 0x4000,
             mt_rand(0, 0x3fff) | 0x8000,
             mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
         );
+        $correlationId = $this->correlationIdPrefix . $uuid;
 
         $extraHeaders = [
             'Authorization: Bearer ' . $token,

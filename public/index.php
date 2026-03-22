@@ -77,11 +77,14 @@ $router->get('/eset/debug-devices', [EsetController::class, 'debugDevices']);
 $router->get('/eset/debug-history', [EsetController::class, 'debugHistory']);
 
 // Be-Cloud
-$router->get('/becloud/licenses',     [BeCloudController::class, 'licenses']);
-$router->get('/becloud/sync-logs',    [BeCloudController::class, 'syncLogs']);
-$router->post('/becloud/sync',        [BeCloudController::class, 'sync']);
-$router->post('/becloud/sync-cancel', [BeCloudController::class, 'syncCancel']);
-$router->get('/becloud/sync-status',  [BeCloudController::class, 'syncStatus']);
+$router->get('/becloud/customers',       [BeCloudController::class, 'customers']);
+$router->get('/becloud/customer-detail', [BeCloudController::class, 'customerDetail']);
+$router->get('/becloud/client/{id}',     [BeCloudController::class, 'clientDetail']);
+$router->get('/becloud/licenses',        [BeCloudController::class, 'licenses']);
+$router->get('/becloud/sync-logs',       [BeCloudController::class, 'syncLogs']);
+$router->post('/becloud/sync',           [BeCloudController::class, 'sync']);
+$router->post('/becloud/sync-cancel',    [BeCloudController::class, 'syncCancel']);
+$router->get('/becloud/sync-status',     [BeCloudController::class, 'syncStatus']);
 
 // NinjaOne
 $router->get('/ninjaone/licenses',     [NinjaOneController::class, 'licenses']);

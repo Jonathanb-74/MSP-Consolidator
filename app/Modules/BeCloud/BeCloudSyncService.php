@@ -56,6 +56,7 @@ class BeCloudSyncService
         $summary = [
             'customers'     => ['fetched' => 0, 'created' => 0, 'updated' => 0],
             'subscriptions' => ['fetched' => 0, 'created' => 0, 'updated' => 0],
+            'licenses'      => ['fetched' => 0, 'created' => 0, 'updated' => 0],
             'errors'        => [],
         ];
 
@@ -70,7 +71,7 @@ class BeCloudSyncService
                 $customersSummary['updated']
             ));
 
-            $this->log("--- Étape 2/2 : Synchronisation des subscriptions ---");
+            $this->log("--- Étape 2/3 : Synchronisation des subscriptions ---");
             $subsSummary = $this->syncSubscriptions();
             $summary['subscriptions'] = $subsSummary;
             $this->log(sprintf(
@@ -80,9 +81,19 @@ class BeCloudSyncService
                 $subsSummary['updated']
             ));
 
-            $totalFetched = $customersSummary['fetched'] + $subsSummary['fetched'];
-            $totalCreated = $customersSummary['created'] + $subsSummary['created'];
-            $totalUpdated = $customersSummary['updated'] + $subsSummary['updated'];
+            $this->log("--- Étape 3/3 : Synchronisation des licences ---");
+            $licSummary = $this->syncLicenses();
+            $summary['licenses'] = $licSummary;
+            $this->log(sprintf(
+                "Licences terminé : %d récupérées, %d créées, %d mises à jour.",
+                $licSummary['fetched'],
+                $licSummary['created'],
+                $licSummary['updated']
+            ));
+
+            $totalFetched = $customersSummary['fetched'] + $subsSummary['fetched'] + $licSummary['fetched'];
+            $totalCreated = $customersSummary['created'] + $subsSummary['created'] + $licSummary['created'];
+            $totalUpdated = $customersSummary['updated'] + $subsSummary['updated'] + $licSummary['updated'];
 
             $this->finishSyncLog($logId, 'success', $totalFetched, $totalCreated, $totalUpdated);
 
@@ -204,19 +215,20 @@ class BeCloudSyncService
                     continue;
                 }
 
-                $subscriptionName = $sub['subscriptionName'] ?? $sub['offerName'] ?? null;
-                $offerName        = $sub['offerName']        ?? null;
-                $offerId          = $sub['offerId']          ?? null;
-                $offerType        = $sub['offerType']['name'] ?? null;
-                $status           = $sub['subscriptionStatus']['name'] ?? null;
-                $quantity         = (int)($sub['quantity']         ?? 0);
-                $assignedLicenses = (int)($sub['assignedLicenses'] ?? 0);
-                $startDate        = isset($sub['startDate'])  ? date('Y-m-d', strtotime($sub['startDate']))  : null;
-                $endDate          = isset($sub['endDate'])    ? date('Y-m-d', strtotime($sub['endDate']))    : null;
-                $billingFrequency = $sub['billingFrequency']['name'] ?? null;
-                $termDuration     = $sub['termDuration']['name']     ?? null;
-                $isTrial          = !empty($sub['isTrialOffer']) ? 1 : 0;
-                $autoRenewal      = !empty($sub['autoRenewal'])  ? 1 : 0;
+                $subscriptionName   = $sub['subscriptionName'] ?? $sub['offerName'] ?? null;
+                $offerName          = $sub['offerName']        ?? null;
+                $offerId            = $sub['offerId']          ?? null;
+                $offerType          = $sub['offerType']['name'] ?? null;
+                $status             = $sub['subscriptionStatus']['name'] ?? null;
+                $quantity           = (int)($sub['quantity']         ?? 0);
+                $assignedLicenses   = (int)($sub['assignedLicenses'] ?? 0);
+                $startDate          = isset($sub['startDate'])  ? date('Y-m-d', strtotime($sub['startDate']))  : null;
+                $endDate            = isset($sub['endDate'])    ? date('Y-m-d', strtotime($sub['endDate']))    : null;
+                $billingFrequency   = $sub['billingFrequency']['name'] ?? null;
+                $termDuration       = $sub['termDuration']['name']     ?? null;
+                $isTrial            = !empty($sub['isTrialOffer']) ? 1 : 0;
+                $autoRenewal        = !empty($sub['autoRenewal'])  ? 1 : 0;
+                $providerInstanceId = $sub['providerInstanceId'] ?? null;
 
                 $exists = $this->db->fetchOne(
                     "SELECT id FROM be_cloud_subscriptions WHERE be_cloud_subscription_id = ? LIMIT 1",
@@ -231,7 +243,7 @@ class BeCloudSyncService
                             quantity = ?, assigned_licenses = ?,
                             start_date = ?, end_date = ?,
                             billing_frequency = ?, term_duration = ?,
-                            is_trial = ?, auto_renewal = ?,
+                            is_trial = ?, auto_renewal = ?, provider_instance_id = ?,
                             raw_data = ?, last_sync_at = ?, updated_at = ?
                          WHERE be_cloud_subscription_id = ?",
                         [
@@ -240,7 +252,7 @@ class BeCloudSyncService
                             $quantity, $assignedLicenses,
                             $startDate, $endDate,
                             $billingFrequency, $termDuration,
-                            $isTrial, $autoRenewal,
+                            $isTrial, $autoRenewal, $providerInstanceId,
                             json_encode($sub), $now, $now,
                             $subscriptionId,
                         ]
@@ -253,14 +265,14 @@ class BeCloudSyncService
                              subscription_name, offer_name, offer_id, offer_type, status,
                              quantity, assigned_licenses, start_date, end_date,
                              billing_frequency, term_duration, is_trial, auto_renewal,
-                             raw_data, last_sync_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                             provider_instance_id, raw_data, last_sync_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         [
                             $customerId, $subscriptionId,
                             $subscriptionName, $offerName, $offerId, $offerType, $status,
                             $quantity, $assignedLicenses, $startDate, $endDate,
                             $billingFrequency, $termDuration, $isTrial, $autoRenewal,
-                            json_encode($sub), $now,
+                            $providerInstanceId, json_encode($sub), $now,
                         ]
                     );
                     $created++;
@@ -269,6 +281,108 @@ class BeCloudSyncService
         }
 
         $this->log("Subscriptions : {$totalFetched} récupérées, {$created} créées, {$updated} mises à jour.");
+        return ['fetched' => $totalFetched, 'created' => $created, 'updated' => $updated];
+    }
+
+    // ── Licenses ───────────────────────────────────────────────────
+
+    /**
+     * Synchronise les licences M365/cloud pour chaque customer ayant un providerInstanceId.
+     * Appelle GET /v1/Customers/{id}/licenses?providerInstanceId={id}
+     */
+    public function syncLicenses(): array
+    {
+        $allCustomers = $this->db->fetchAll(
+            "SELECT bcc.be_cloud_customer_id, bcc.connection_id,
+                    bs.provider_instance_id
+             FROM be_cloud_customers bcc
+             JOIN be_cloud_subscriptions bs
+                  ON bs.be_cloud_customer_id = bcc.be_cloud_customer_id
+             WHERE bcc.connection_id = ?
+               AND bs.provider_instance_id IS NOT NULL
+               AND bs.provider_instance_id != ''
+             GROUP BY bcc.be_cloud_customer_id, bcc.connection_id, bs.provider_instance_id",
+            [$this->connectionId]
+        );
+
+        $totalFetched = 0;
+        $created      = 0;
+        $updated      = 0;
+        $now          = date('Y-m-d H:i:s');
+
+        $this->log(count($allCustomers) . " customers avec providerInstanceId à traiter pour les licences.");
+
+        foreach ($allCustomers as $row) {
+            $customerId         = $row['be_cloud_customer_id'];
+            $providerInstanceId = $row['provider_instance_id'];
+
+            try {
+                $licenses = $this->api->getLicensesByCustomer($customerId, $providerInstanceId);
+            } catch (\Throwable $e) {
+                $this->log("Licences ignorées pour customer {$customerId} : " . $e->getMessage());
+                continue;
+            }
+
+            $count    = count($licenses);
+            $totalFetched += $count;
+
+            if ($count > 0) {
+                $this->log("{$count} licence(s) reçue(s) pour customer {$customerId}.");
+            }
+
+            foreach ($licenses as $lic) {
+                $skuId              = $lic['skuId']              ?? null;
+                if (!$skuId) {
+                    continue;
+                }
+                $name               = $lic['name']               ?? null;
+                $totalLicenses      = (int)($lic['totalLicenses']     ?? 0);
+                $consumedLicenses   = (int)($lic['consumedLicenses']  ?? 0);
+                $availableLicenses  = (int)($lic['availableLicenses'] ?? 0);
+                $suspendedLicenses  = (int)($lic['suspendedLicenses'] ?? 0);
+                $isSelected         = !empty($lic['isSelected']) ? 1 : 0;
+
+                $exists = $this->db->fetchOne(
+                    "SELECT id FROM be_cloud_licenses
+                     WHERE connection_id = ? AND be_cloud_customer_id = ? AND sku_id = ?
+                     LIMIT 1",
+                    [$this->connectionId, $customerId, $skuId]
+                );
+
+                if ($exists) {
+                    $this->db->execute(
+                        "UPDATE be_cloud_licenses SET
+                            name = ?, total_licenses = ?, consumed_licenses = ?,
+                            available_licenses = ?, suspended_licenses = ?, is_selected = ?,
+                            raw_data = ?, last_sync_at = ?, updated_at = ?
+                         WHERE connection_id = ? AND be_cloud_customer_id = ? AND sku_id = ?",
+                        [
+                            $name, $totalLicenses, $consumedLicenses,
+                            $availableLicenses, $suspendedLicenses, $isSelected,
+                            json_encode($lic), $now, $now,
+                            $this->connectionId, $customerId, $skuId,
+                        ]
+                    );
+                    $updated++;
+                } else {
+                    $this->db->execute(
+                        "INSERT INTO be_cloud_licenses
+                            (connection_id, be_cloud_customer_id, sku_id, name,
+                             total_licenses, consumed_licenses, available_licenses,
+                             suspended_licenses, is_selected, raw_data, last_sync_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            $this->connectionId, $customerId, $skuId, $name,
+                            $totalLicenses, $consumedLicenses, $availableLicenses,
+                            $suspendedLicenses, $isSelected, json_encode($lic), $now,
+                        ]
+                    );
+                    $created++;
+                }
+            }
+        }
+
+        $this->log("Licences : {$totalFetched} récupérées, {$created} créées, {$updated} mises à jour.");
         return ['fetched' => $totalFetched, 'created' => $created, 'updated' => $updated];
     }
 

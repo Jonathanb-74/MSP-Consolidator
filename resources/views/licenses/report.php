@@ -356,45 +356,137 @@ $dateStr  = $now->format('d/m/Y à H:i');
     <div class="section-header">
         <div class="section-header-left">Cloud & Microsoft 365 — Be-Cloud</div>
         <div class="section-header-right">
-            <?php if (!empty($bcDetail)): ?>
             <?php
-                $totalBcQty      = array_sum(array_column($bcDetail, 'quantity'));
-                $totalBcAssigned = array_sum(array_column($bcDetail, 'assigned_licenses'));
+            $bcLicCount = count($bcLicDetail ?? []);
+            $bcSubCount = count($bcDetail ?? []);
+            $parts = [];
+            if ($bcLicCount) $parts[] = $bcLicCount . ' licence(s) M365';
+            if ($bcSubCount) $parts[] = $bcSubCount . ' abonnement(s)';
+            echo implode(' &nbsp;·&nbsp; ', $parts);
             ?>
-            <?= count($bcDetail) ?> abonnement(s) &nbsp;·&nbsp; <?= $totalBcAssigned ?>/<?= $totalBcQty ?> assignés
-            <?php endif; ?>
         </div>
     </div>
 
-    <?php if (empty($bcDetail)): ?>
-    <div class="empty-msg">Aucun abonnement Be-Cloud synchronisé pour ce client.</div>
+    <?php if (empty($bcLicDetail) && empty($bcDetail)): ?>
+    <div class="empty-msg">Aucune donnée Be-Cloud synchronisée pour ce client.</div>
     <?php else: ?>
+
+    <?php if (!empty($bcLicDetail)): ?>
+    <!-- Licences M365 -->
+    <div style="background:#f1f5f9;padding:5px 10px;font-size:8pt;font-weight:bold;text-transform:uppercase;letter-spacing:.3px;color:#475569;border:1px solid #e2e8f0;border-top:none">
+        Licences M365
+    </div>
     <table class="data-table">
         <thead>
             <tr>
-                <th>Produit / Abonnement</th>
+                <th>Licence</th>
+                <th class="text-center">Total</th>
+                <th class="text-center">Consommées</th>
                 <th class="text-center">Disponibles</th>
-                <th class="text-center">Assignés</th>
-                <th class="text-center">Libres</th>
+                <th class="text-center">Suspendues</th>
+                <th class="text-center">Usage</th>
             </tr>
         </thead>
         <tbody>
-        <?php foreach ($bcDetail as $row):
-            $qty      = (int)$row['quantity'];
-            $assigned = (int)$row['assigned_licenses'];
-            $free     = $qty - $assigned;
-            $over     = $assigned > $qty;
-            $full     = !$over && $qty > 0 && $assigned === $qty;
+        <?php foreach ($bcLicDetail as $row):
+            $total_l   = (int)$row['total_licenses'];
+            $consumed  = (int)$row['consumed_licenses'];
+            $available = (int)$row['available_licenses'];
+            $suspended = (int)$row['suspended_licenses'];
+            $pct       = $total_l > 0 ? min(100, (int)round($consumed / $total_l * 100)) : 0;
+            $barColor  = $pct >= 90 ? '#ef4444' : ($pct >= 70 ? '#f59e0b' : '#22c55e');
         ?>
-        <tr <?= $over ? 'class="row-danger"' : '' ?>>
-            <td><?= htmlspecialchars($row['product_name'] ?? '—') ?></td>
-            <td class="text-center"><?= $qty ?></td>
-            <td class="text-center <?= $over ? 'val-over' : ($full ? 'val-full' : '') ?>"><?= $assigned ?></td>
-            <td class="text-center <?= $over ? 'val-over' : '' ?>"><?= $free ?></td>
+        <tr <?= $pct >= 90 ? 'class="row-danger"' : '' ?>>
+            <td>
+                <strong><?= htmlspecialchars($row['name'] ?: $row['sku_id']) ?></strong>
+                <div style="font-size:7.5pt;color:#94a3b8"><?= htmlspecialchars($row['sku_id']) ?></div>
+            </td>
+            <td class="text-center"><?= $total_l ?></td>
+            <td class="text-center <?= $pct >= 90 ? 'val-over' : '' ?>"><?= $consumed ?></td>
+            <td class="text-center <?= $available === 0 && $total_l > 0 ? 'val-over' : '' ?>"><?= $available ?></td>
+            <td class="text-center <?= $suspended > 0 ? 'val-over' : '' ?>"><?= $suspended > 0 ? $suspended : '—' ?></td>
+            <td class="text-center">
+                <?php if ($total_l > 0): ?>
+                <div class="progress-wrap">
+                    <div class="progress-bar" style="background:<?= $barColor ?>;width:<?= $pct ?>%"></div>
+                </div>
+                <?= $pct ?>%
+                <?php else: ?>—<?php endif; ?>
+            </td>
         </tr>
         <?php endforeach; ?>
         </tbody>
     </table>
+    <?php endif; ?>
+
+    <?php if (!empty($bcDetail)): ?>
+    <!-- Abonnements -->
+    <div style="background:#f1f5f9;padding:5px 10px;font-size:8pt;font-weight:bold;text-transform:uppercase;letter-spacing:.3px;color:#475569;border:1px solid #e2e8f0;border-top:none;margin-top:10px">
+        Abonnements
+    </div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Offre</th>
+                <th class="text-center">Statut</th>
+                <th class="text-center">Qté</th>
+                <th>Début</th>
+                <th>Fin</th>
+                <th>Fréquence</th>
+                <th class="text-right">Prix unit.</th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php
+        $today    = new \DateTime();
+        $in30Days = new \DateTime('+30 days');
+        foreach ($bcDetail as $row):
+            $endDate      = !empty($row['end_date']) ? new \DateTime($row['end_date']) : null;
+            $expiringSoon = $endDate && $endDate >= $today && $endDate <= $in30Days;
+            $statusVal    = $row['status'] ?? '';
+
+            if ($expiringSoon) {
+                $sBadge = ['Expire bientôt', 'badge-warning'];
+            } elseif ($statusVal === 'Active') {
+                $sBadge = ['Actif', 'badge-success'];
+            } elseif ($statusVal === 'Suspended') {
+                $sBadge = ['Suspendu', 'badge-warning'];
+            } elseif (in_array($statusVal, ['Deleted', 'Expired']) || ($endDate && $endDate < $today)) {
+                $sBadge = [$statusVal ?: 'Expiré', 'badge-danger'];
+            } else {
+                $sBadge = [$statusVal ?: '?', 'badge-grey'];
+            }
+
+            $price    = $row['list_price'] ?? null;
+            $currency = $row['currency'] ?? '';
+            $priceStr = ($price !== null && $price !== '') ? number_format((float)$price, 2) . ' ' . htmlspecialchars($currency) : '—';
+        ?>
+        <tr>
+            <td>
+                <strong><?= htmlspecialchars($row['offer_name'] ?? '—') ?></strong>
+                <?php if (!empty($row['is_trial'])): ?>
+                    <span class="badge badge-info" style="margin-left:4px">Trial</span>
+                <?php endif; ?>
+                <?php if (!empty($row['auto_renewal'])): ?>
+                    <span class="badge badge-grey" style="margin-left:2px">Auto</span>
+                <?php endif; ?>
+            </td>
+            <td class="text-center"><span class="badge <?= $sBadge[1] ?>"><?= htmlspecialchars($sBadge[0]) ?></span></td>
+            <td class="text-center"><?= (int)($row['quantity'] ?? 0) ?></td>
+            <td><?= !empty($row['start_date']) ? date('d/m/Y', strtotime($row['start_date'])) : '—' ?></td>
+            <td class="<?= $expiringSoon ? 'val-over' : ($endDate && $endDate < $today ? 'val-over' : '') ?>">
+                <?= $endDate ? date('d/m/Y', $endDate->getTimestamp()) : '—' ?>
+            </td>
+            <td style="color:#64748b">
+                <?= htmlspecialchars(implode(' / ', array_filter([$row['billing_frequency'] ?? '', $row['term_duration'] ?? ''])) ?: '—') ?>
+            </td>
+            <td class="text-right"><?= $priceStr ?></td>
+        </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
+
     <?php endif; ?>
 </div>
 

@@ -16,102 +16,259 @@ class BeCloudController extends Controller
     }
 
     /**
-     * GET /becloud/licenses — Tableau des subscriptions Be-Cloud
+     * GET /becloud/customers — Liste des customers Be-Cloud avec subscriptions et licences
+     */
+    public function customers(array $params = []): void
+    {
+        $search       = trim($_GET['search'] ?? '');
+        $connectionId = (int)($_GET['connection_id'] ?? 0);
+        $page         = max(1, (int)($_GET['page'] ?? 1));
+        $_pp          = (int)($_GET['perPage'] ?? 50);
+        $perPage      = in_array($_pp, [25, 50, 100, 250]) ? $_pp : 50;
+        $offset       = ($page - 1) * $perPage;
+
+        $conditions = [];
+        $params     = [];
+
+        if ($search !== '') {
+            $conditions[] = "(bcc.name LIKE ? OR c.name LIKE ?)";
+            $like         = '%' . $search . '%';
+            $params[]     = $like;
+            $params[]     = $like;
+        }
+        if ($connectionId > 0) {
+            $conditions[] = "bcc.connection_id = ?";
+            $params[]     = $connectionId;
+        }
+        $whereSql = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
+
+        $countSql = "
+            SELECT COUNT(DISTINCT bcc.id)
+            FROM be_cloud_customers bcc
+            JOIN provider_connections pc ON pc.id = bcc.connection_id
+            LEFT JOIN client_provider_mappings cpm
+                ON cpm.provider_client_id = bcc.be_cloud_customer_id
+                AND cpm.connection_id = bcc.connection_id
+                AND cpm.is_confirmed = 1
+            LEFT JOIN clients c ON c.id = cpm.client_id
+            $whereSql
+        ";
+        $total = $this->db->count($countSql, $params);
+
+        $sql = "
+            SELECT
+                bcc.id,
+                bcc.be_cloud_customer_id,
+                bcc.name AS customer_name,
+                bcc.internal_identifier,
+                bcc.connection_id,
+                pc.name AS connection_name,
+                c.id    AS client_id,
+                c.name  AS client_name,
+                cpm.is_confirmed AS mapping_confirmed,
+                cpm.mapping_method,
+                (SELECT COUNT(*) FROM be_cloud_subscriptions bs
+                 WHERE bs.be_cloud_customer_id = bcc.be_cloud_customer_id) AS sub_count,
+                (SELECT COUNT(*) FROM be_cloud_licenses bcl
+                 WHERE bcl.be_cloud_customer_id = bcc.be_cloud_customer_id
+                   AND bcl.connection_id = bcc.connection_id) AS lic_count,
+                (SELECT SUM(bcl2.total_licenses) FROM be_cloud_licenses bcl2
+                 WHERE bcl2.be_cloud_customer_id = bcc.be_cloud_customer_id
+                   AND bcl2.connection_id = bcc.connection_id) AS lic_total,
+                (SELECT SUM(bcl3.consumed_licenses) FROM be_cloud_licenses bcl3
+                 WHERE bcl3.be_cloud_customer_id = bcc.be_cloud_customer_id
+                   AND bcl3.connection_id = bcc.connection_id) AS lic_consumed
+            FROM be_cloud_customers bcc
+            JOIN provider_connections pc ON pc.id = bcc.connection_id
+            LEFT JOIN client_provider_mappings cpm
+                ON cpm.provider_client_id = bcc.be_cloud_customer_id
+                AND cpm.connection_id = bcc.connection_id
+                AND cpm.is_confirmed = 1
+            LEFT JOIN clients c ON c.id = cpm.client_id
+            $whereSql
+            GROUP BY bcc.id
+            ORDER BY bcc.name ASC
+            LIMIT $perPage OFFSET $offset
+        ";
+        $customers = $this->db->fetchAll($sql, $params);
+
+        $connections = $this->db->fetchAll(
+            "SELECT pc.id, pc.name FROM provider_connections pc
+             JOIN providers p ON p.id = pc.provider_id
+             WHERE p.code = 'becloud' AND pc.is_enabled = 1
+             ORDER BY pc.id ASC"
+        );
+
+        $lastSync = $this->db->fetchOne(
+            "SELECT finished_at, status FROM sync_logs sl
+             JOIN providers p ON p.id = sl.provider_id
+             WHERE p.code = 'becloud' AND status IN ('success','partial')
+             ORDER BY finished_at DESC LIMIT 1"
+        );
+
+        $this->render('becloud/customers', [
+            'pageTitle'    => 'Clients Be-Cloud',
+            'breadcrumbs'  => ['Dashboard' => '/', 'Be-Cloud' => '/becloud/licenses', 'Clients' => null],
+            'customers'    => $customers,
+            'total'        => $total,
+            'page'         => $page,
+            'perPage'      => $perPage,
+            'search'       => $search,
+            'connectionId' => $connectionId,
+            'connections'  => $connections,
+            'lastSync'     => $lastSync,
+        ]);
+    }
+
+    /**
+     * GET /becloud/customer-detail — JSON : subscriptions + licences d'un customer (AJAX)
+     */
+    public function customerDetail(array $params = []): void
+    {
+        $id = (int)($_GET['id'] ?? 0);
+        if (!$id) {
+            $this->json(['error' => 'id manquant'], 400);
+            return;
+        }
+
+        $customer = $this->db->fetchOne(
+            "SELECT bcc.*, pc.name AS connection_name
+             FROM be_cloud_customers bcc
+             JOIN provider_connections pc ON pc.id = bcc.connection_id
+             WHERE bcc.id = ?",
+            [$id]
+        );
+        if (!$customer) {
+            $this->json(['error' => 'Customer introuvable'], 404);
+            return;
+        }
+
+        $subscriptions = $this->db->fetchAll(
+            "SELECT subscription_name, offer_name, offer_type, status,
+                    quantity, assigned_licenses,
+                    (quantity - assigned_licenses) AS seats_free,
+                    start_date, end_date, billing_frequency, term_duration,
+                    is_trial, auto_renewal
+             FROM be_cloud_subscriptions
+             WHERE be_cloud_customer_id = ?
+             ORDER BY offer_name ASC",
+            [$customer['be_cloud_customer_id']]
+        );
+
+        $licenses = $this->db->fetchAll(
+            "SELECT sku_id, name, total_licenses, consumed_licenses,
+                    available_licenses, suspended_licenses, is_selected
+             FROM be_cloud_licenses
+             WHERE be_cloud_customer_id = ? AND connection_id = ?
+             ORDER BY name ASC",
+            [$customer['be_cloud_customer_id'], $customer['connection_id']]
+        );
+
+        $this->json([
+            'customer'      => $customer,
+            'subscriptions' => $subscriptions,
+            'licenses'      => $licenses,
+        ]);
+    }
+
+    /**
+     * GET /becloud/licenses — Tableau des licences M365 par client
+     * (source : be_cloud_licenses, usage réel Microsoft)
      */
     public function licenses(array $params = []): void
     {
-        $search    = trim($_GET['search'] ?? '');
-        $tagId     = (int)($_GET['tag'] ?? 0);
-        $status    = $_GET['status'] ?? '';
-        $offerType = $_GET['offer_type'] ?? '';
-        $sortBy    = $_GET['sort'] ?? 'client';
-        $sortDir   = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
-        $page      = max(1, (int)($_GET['page'] ?? 1));
-        $_pp       = (int)($_GET['perPage'] ?? 50);
-        $perPage   = in_array($_pp, [25, 50, 100, 250]) ? $_pp : 50;
-        $offset    = ($page - 1) * $perPage;
+        $search  = trim($_GET['search'] ?? '');
+        $tagId   = (int)($_GET['tag'] ?? 0);
+        $sortBy  = $_GET['sort'] ?? 'client';
+        $sortDir = strtoupper($_GET['dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
+        $page    = max(1, (int)($_GET['page'] ?? 1));
+        $_pp     = (int)($_GET['perPage'] ?? 50);
+        $perPage = in_array($_pp, [25, 50, 100, 250]) ? $_pp : 50;
+        $offset  = ($page - 1) * $perPage;
 
         $allowedSorts = [
-            'client'   => 'c.name',
-            'customer' => 'bc.name',
-            'product'  => 'bs.subscription_name',
-            'quantity' => 'bs.quantity',
-            'assigned' => 'bs.assigned_licenses',
-            'status'   => 'bs.status',
-            'end_date' => 'bs.end_date',
+            'client'    => 'c.name',
+            'customer'  => 'bcc.name',
+            'license'   => 'bcl.name',
+            'total'     => 'bcl.total_licenses',
+            'consumed'  => 'bcl.consumed_licenses',
+            'available' => 'bcl.available_licenses',
         ];
         $orderCol = $allowedSorts[$sortBy] ?? 'c.name';
 
-        [$whereSql, $whereParams] = $this->buildWhere($search, $tagId, $status, $offerType);
+        $conditions = [];
+        $whereParams = [];
+
+        if ($search !== '') {
+            $conditions[] = "(c.name LIKE ? OR bcc.name LIKE ? OR bcl.name LIKE ? OR bcl.sku_id LIKE ?)";
+            $like = '%' . $search . '%';
+            $whereParams = array_merge($whereParams, [$like, $like, $like, $like]);
+        }
+        if ($tagId > 0) {
+            $conditions[] = "ctf.tag_id = ?";
+            $whereParams[] = $tagId;
+        }
+        $whereSql = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
         $countSql = "
-            SELECT COUNT(*)
-            FROM be_cloud_subscriptions bs
-            JOIN be_cloud_customers bc ON bc.be_cloud_customer_id = bs.be_cloud_customer_id
+            SELECT COUNT(DISTINCT bcl.id)
+            FROM be_cloud_licenses bcl
+            JOIN be_cloud_customers bcc ON bcc.be_cloud_customer_id = bcl.be_cloud_customer_id
+                                       AND bcc.connection_id = bcl.connection_id
+            JOIN provider_connections pc ON pc.id = bcc.connection_id
             LEFT JOIN client_provider_mappings cpm
-                ON cpm.provider_client_id = bc.be_cloud_customer_id
-                AND cpm.connection_id = bc.connection_id
+                ON cpm.provider_client_id = bcc.be_cloud_customer_id
+                AND cpm.connection_id = bcc.connection_id
             LEFT JOIN clients c ON c.id = cpm.client_id
             LEFT JOIN client_tags ctf ON ctf.client_id = c.id
             $whereSql
         ";
-
         $total = $this->db->count($countSql, $whereParams);
 
         $sql = "
             SELECT
-                bs.id,
-                bs.be_cloud_subscription_id,
-                bs.subscription_name,
-                bs.offer_name,
-                bs.offer_id,
-                bs.offer_type,
-                bs.status,
-                bs.quantity,
-                bs.assigned_licenses,
-                (bs.quantity - bs.assigned_licenses) AS seats_free,
-                bs.start_date,
-                bs.end_date,
-                bs.billing_frequency,
-                bs.term_duration,
-                bs.is_trial,
-                bs.auto_renewal,
-                bs.last_sync_at,
-                bc.be_cloud_customer_id,
-                bc.name AS customer_name,
-                bc.internal_identifier,
-                bc.connection_id,
+                bcl.id,
+                bcl.sku_id,
+                bcl.name AS license_name,
+                bcl.total_licenses,
+                bcl.consumed_licenses,
+                bcl.available_licenses,
+                bcl.suspended_licenses,
+                bcl.last_sync_at,
+                bcc.id AS bc_customer_id,
+                bcc.be_cloud_customer_id,
+                bcc.name AS customer_name,
+                bcc.internal_identifier,
+                bcc.connection_id,
                 pc.name AS connection_name,
-                c.id AS client_id,
-                c.name AS client_name,
+                c.id    AS client_id,
+                c.name  AS client_name,
                 c.client_number,
                 (SELECT GROUP_CONCAT(CONCAT(t.id, ':', t.name, ':', t.color)
                                      ORDER BY t.display_order ASC SEPARATOR ';;')
                  FROM client_tags ct2 JOIN tags t ON t.id = ct2.tag_id
                  WHERE ct2.client_id = c.id) AS client_tags_raw,
-                cpm.is_confirmed AS mapping_confirmed,
-                cpm.mapping_method
-            FROM be_cloud_subscriptions bs
-            JOIN be_cloud_customers bc ON bc.be_cloud_customer_id = bs.be_cloud_customer_id
-            JOIN provider_connections pc ON pc.id = bc.connection_id
+                cpm.is_confirmed AS mapping_confirmed
+            FROM be_cloud_licenses bcl
+            JOIN be_cloud_customers bcc ON bcc.be_cloud_customer_id = bcl.be_cloud_customer_id
+                                       AND bcc.connection_id = bcl.connection_id
+            JOIN provider_connections pc ON pc.id = bcc.connection_id
             LEFT JOIN client_provider_mappings cpm
-                ON cpm.provider_client_id = bc.be_cloud_customer_id
-                AND cpm.connection_id = bc.connection_id
+                ON cpm.provider_client_id = bcc.be_cloud_customer_id
+                AND cpm.connection_id = bcc.connection_id
             LEFT JOIN clients c ON c.id = cpm.client_id
             LEFT JOIN client_tags ctf ON ctf.client_id = c.id
             $whereSql
-            GROUP BY bs.id
-            ORDER BY $orderCol $sortDir
+            GROUP BY bcl.id
+            ORDER BY $orderCol $sortDir, bcl.name ASC
             LIMIT $perPage OFFSET $offset
         ";
-
-        $subscriptions = $this->db->fetchAll($sql, $whereParams);
+        $licenses = $this->db->fetchAll($sql, $whereParams);
 
         $lastSync = $this->db->fetchOne(
             "SELECT finished_at, status FROM sync_logs sl
              JOIN providers p ON p.id = sl.provider_id
-             WHERE p.code = 'becloud'
-             AND status IN ('success','partial')
+             WHERE p.code = 'becloud' AND status IN ('success','partial')
              ORDER BY finished_at DESC LIMIT 1"
         );
 
@@ -128,21 +285,90 @@ class BeCloudController extends Controller
         );
 
         $this->render('becloud/licenses', [
-            'pageTitle'     => 'Licences Be-Cloud',
-            'breadcrumbs'   => ['Dashboard' => '/', 'Be-Cloud' => null, 'Abonnements' => null],
+            'pageTitle'   => 'Licences Be-Cloud',
+            'breadcrumbs' => ['Dashboard' => '/', 'Be-Cloud' => null, 'Licences' => null],
+            'licenses'    => $licenses,
+            'total'       => $total,
+            'page'        => $page,
+            'perPage'     => $perPage,
+            'search'      => $search,
+            'tagId'       => $tagId,
+            'sortBy'      => $sortBy,
+            'sortDir'     => $sortDir,
+            'lastSync'    => $lastSync,
+            'allTags'     => $allTags,
+            'connections' => $connections,
+        ]);
+    }
+
+    /**
+     * GET /becloud/client/{id} — Page de détail d'un customer Be-Cloud
+     * Affiche les licences M365 (usage réel) et les abonnements (avec prix)
+     */
+    public function clientDetail(array $params = []): void
+    {
+        $id = (int)($params['id'] ?? 0);
+        if (!$id) {
+            http_response_code(404);
+            exit;
+        }
+
+        $customer = $this->db->fetchOne(
+            "SELECT bcc.*,
+                    pc.name AS connection_name,
+                    c.id    AS client_id,
+                    c.name  AS client_name,
+                    c.client_number,
+                    cpm.is_confirmed AS mapping_confirmed
+             FROM be_cloud_customers bcc
+             JOIN provider_connections pc ON pc.id = bcc.connection_id
+             LEFT JOIN client_provider_mappings cpm
+                 ON cpm.provider_client_id = bcc.be_cloud_customer_id
+                 AND cpm.connection_id = bcc.connection_id
+             LEFT JOIN clients c ON c.id = cpm.client_id
+             WHERE bcc.id = ?",
+            [$id]
+        );
+        if (!$customer) {
+            http_response_code(404);
+            exit;
+        }
+
+        $licenses = $this->db->fetchAll(
+            "SELECT sku_id, name, total_licenses, consumed_licenses,
+                    available_licenses, suspended_licenses, is_selected,
+                    last_sync_at
+             FROM be_cloud_licenses
+             WHERE be_cloud_customer_id = ? AND connection_id = ?
+             ORDER BY name ASC",
+            [$customer['be_cloud_customer_id'], $customer['connection_id']]
+        );
+
+        $subscriptions = $this->db->fetchAll(
+            "SELECT subscription_name, offer_name, offer_type, status,
+                    quantity, assigned_licenses,
+                    start_date, end_date,
+                    billing_frequency, term_duration,
+                    is_trial, auto_renewal,
+                    JSON_UNQUOTE(JSON_EXTRACT(raw_data, '$.listPrice.value'))          AS list_price,
+                    JSON_UNQUOTE(JSON_EXTRACT(raw_data, '$.listPrice.currency.name'))  AS currency
+             FROM be_cloud_subscriptions
+             WHERE be_cloud_customer_id = ?
+             ORDER BY offer_name ASC",
+            [$customer['be_cloud_customer_id']]
+        );
+
+        $this->render('becloud/client', [
+            'pageTitle'     => htmlspecialchars($customer['name']) . ' — Be-Cloud',
+            'breadcrumbs'   => [
+                'Dashboard'     => '/',
+                'Be-Cloud'      => null,
+                'Licences'      => '/becloud/licenses',
+                htmlspecialchars($customer['name']) => null,
+            ],
+            'customer'      => $customer,
+            'licenses'      => $licenses,
             'subscriptions' => $subscriptions,
-            'total'         => $total,
-            'page'          => $page,
-            'perPage'       => $perPage,
-            'search'        => $search,
-            'tagId'         => $tagId,
-            'status'        => $status,
-            'offerType'     => $offerType,
-            'sortBy'        => $sortBy,
-            'sortDir'       => $sortDir,
-            'lastSync'      => $lastSync,
-            'allTags'       => $allTags,
-            'connections'   => $connections,
         ]);
     }
 

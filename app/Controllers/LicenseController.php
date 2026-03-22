@@ -65,9 +65,10 @@ class LicenseController extends Controller
         $havingSql = $this->buildHaving($providerFilters, $showAll, $providerLogic, $tagHavingSql);
 
         // Joins toujours LEFT (le filtrage se fait via HAVING)
-        $bcJoinSql    = $this->bcJoin();
-        $ninjaJoinSql = $this->ninjaJoin();
-        $ikJoinSql    = $this->ikJoin();
+        $bcJoinSql       = $this->bcJoin();
+        $bcLicJoinSql    = $this->bcLicJoin();
+        $ninjaJoinSql    = $this->ninjaJoin();
+        $ikJoinSql       = $this->ikJoin();
 
         // Count via sous-requête pour réutiliser la même logique
         $total = $this->db->count(
@@ -82,6 +83,7 @@ class LicenseController extends Controller
                 LEFT JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
                 LEFT JOIN eset_licenses el  ON el.eset_company_id = ec.eset_company_id
                 {$bcJoinSql}
+                {$bcLicJoinSql}
                 {$ninjaJoinSql}
                 {$ikJoinSql}
                 $whereSql
@@ -107,6 +109,9 @@ class LicenseController extends Controller
                 COALESCE(bc_agg.bc_sub_count, 0)                           AS bc_sub_count,
                 COALESCE(bc_agg.bc_seats_total, 0)                         AS bc_seats_total,
                 COALESCE(bc_agg.bc_seats_used, 0)                          AS bc_seats_used,
+                COALESCE(bc_lic_agg.bc_lic_count, 0)                       AS bc_lic_count,
+                COALESCE(bc_lic_agg.bc_lic_total, 0)                       AS bc_lic_total,
+                COALESCE(bc_lic_agg.bc_lic_consumed, 0)                    AS bc_lic_consumed,
                 COALESCE(ninja_agg.ninja_rmm,   0)                         AS ninja_rmm,
                 COALESCE(ninja_agg.ninja_nms,   0)                         AS ninja_nms,
                 COALESCE(ninja_agg.ninja_mdm,   0)                         AS ninja_mdm,
@@ -123,6 +128,7 @@ class LicenseController extends Controller
              LEFT JOIN eset_companies ec ON ec.eset_company_id = cpm.provider_client_id
              LEFT JOIN eset_licenses el  ON el.eset_company_id = ec.eset_company_id
              {$bcJoinSql}
+             {$bcLicJoinSql}
              {$ninjaJoinSql}
              {$ikJoinSql}
              $whereSql
@@ -132,6 +138,58 @@ class LicenseController extends Controller
              LIMIT $perPage OFFSET $offset",
             $whereParams
         );
+
+        // Détail Be-Cloud licences M365, indexé par client_id
+        $bcLicDetailsRaw = $this->db->fetchAll(
+            "SELECT cpm2.client_id,
+                    bcl.sku_id,
+                    bcl.name,
+                    bcl.total_licenses,
+                    bcl.consumed_licenses,
+                    bcl.available_licenses,
+                    bcl.suspended_licenses
+             FROM be_cloud_licenses bcl
+             JOIN be_cloud_customers bcc
+                  ON bcc.be_cloud_customer_id = bcl.be_cloud_customer_id
+                  AND bcc.connection_id = bcl.connection_id
+             JOIN client_provider_mappings cpm2
+                  ON cpm2.connection_id = bcc.connection_id
+                  AND cpm2.provider_client_id = bcc.be_cloud_customer_id
+                  AND cpm2.is_confirmed = 1
+             ORDER BY cpm2.client_id, bcl.name"
+        );
+
+        $bcLicDetails = [];
+        foreach ($bcLicDetailsRaw as $row) {
+            $bcLicDetails[$row['client_id']][] = $row;
+        }
+
+        // Détail Be-Cloud abonnements, indexé par client_id
+        $bcSubDetailsRaw = $this->db->fetchAll(
+            "SELECT cpm2.client_id,
+                    bs.offer_name,
+                    bs.status,
+                    bs.quantity,
+                    bs.start_date,
+                    bs.end_date,
+                    bs.billing_frequency,
+                    bs.term_duration,
+                    JSON_UNQUOTE(JSON_EXTRACT(bs.raw_data, '$.listPrice.value'))         AS list_price,
+                    JSON_UNQUOTE(JSON_EXTRACT(bs.raw_data, '$.listPrice.currency.name')) AS currency
+             FROM be_cloud_subscriptions bs
+             JOIN be_cloud_customers bcc
+                  ON bcc.be_cloud_customer_id = bs.be_cloud_customer_id
+             JOIN client_provider_mappings cpm2
+                  ON cpm2.connection_id = bcc.connection_id
+                  AND cpm2.provider_client_id = bcc.be_cloud_customer_id
+                  AND cpm2.is_confirmed = 1
+             ORDER BY cpm2.client_id, bs.offer_name"
+        );
+
+        $bcSubDetails = [];
+        foreach ($bcSubDetailsRaw as $row) {
+            $bcSubDetails[$row['client_id']][] = $row;
+        }
 
         // Détail ESET par produit, indexé par client_id
         $esetDetailsRaw = $this->db->fetchAll(
@@ -216,6 +274,8 @@ class LicenseController extends Controller
             'breadcrumbs'     => ['Dashboard' => '/', 'Récap Licences' => null],
             'clients'         => $clients,
             'esetDetails'     => $esetDetails,
+            'bcLicDetails'    => $bcLicDetails,
+            'bcSubDetails'    => $bcSubDetails,
             'ikDetails'       => $ikDetails,
             'ninjaDevices'    => $ninjaDevices,
             'total'           => $total,
@@ -278,7 +338,17 @@ class LicenseController extends Controller
         );
 
         $bcDetail = $this->db->fetchAll(
-            "SELECT bs.offer_name AS product_name, bs.quantity, bs.assigned_licenses
+            "SELECT bs.offer_name,
+                    bs.status,
+                    bs.quantity,
+                    bs.start_date,
+                    bs.end_date,
+                    bs.billing_frequency,
+                    bs.term_duration,
+                    bs.is_trial,
+                    bs.auto_renewal,
+                    JSON_UNQUOTE(JSON_EXTRACT(bs.raw_data, '$.listPrice.value'))         AS list_price,
+                    JSON_UNQUOTE(JSON_EXTRACT(bs.raw_data, '$.listPrice.currency.name')) AS currency
              FROM client_provider_mappings cpm
              JOIN be_cloud_customers bcc
                   ON bcc.be_cloud_customer_id = cpm.provider_client_id
@@ -288,6 +358,24 @@ class LicenseController extends Controller
                AND cpm.is_confirmed = 1
                AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'becloud' LIMIT 1)
              ORDER BY bs.offer_name",
+            [$clientId]
+        );
+
+        $bcLicDetail = $this->db->fetchAll(
+            "SELECT bcl.sku_id, bcl.name,
+                    bcl.total_licenses, bcl.consumed_licenses,
+                    bcl.available_licenses, bcl.suspended_licenses
+             FROM client_provider_mappings cpm
+             JOIN be_cloud_customers bcc
+                  ON bcc.be_cloud_customer_id = cpm.provider_client_id
+                  AND bcc.connection_id = cpm.connection_id
+             JOIN be_cloud_licenses bcl
+                  ON bcl.be_cloud_customer_id = bcc.be_cloud_customer_id
+                  AND bcl.connection_id = bcc.connection_id
+             WHERE cpm.client_id = ?
+               AND cpm.is_confirmed = 1
+               AND cpm.provider_id = (SELECT id FROM providers WHERE code = 'becloud' LIMIT 1)
+             ORDER BY bcl.name",
             [$clientId]
         );
 
@@ -469,5 +557,24 @@ class LicenseController extends Controller
                  AND cpm4.is_confirmed = 1
             GROUP BY cpm4.client_id
         ) ik_agg ON ik_agg.client_id = c.id";
+    }
+
+    private function bcLicJoin(): string
+    {
+        return "LEFT JOIN (
+            SELECT cpm2.client_id,
+                   COUNT(DISTINCT bcl.id)       AS bc_lic_count,
+                   SUM(bcl.total_licenses)       AS bc_lic_total,
+                   SUM(bcl.consumed_licenses)    AS bc_lic_consumed
+            FROM be_cloud_licenses bcl
+            JOIN be_cloud_customers bcc
+                 ON bcc.be_cloud_customer_id = bcl.be_cloud_customer_id
+                 AND bcc.connection_id = bcl.connection_id
+            JOIN client_provider_mappings cpm2
+                 ON cpm2.connection_id = bcc.connection_id
+                 AND cpm2.provider_client_id = bcc.be_cloud_customer_id
+                 AND cpm2.is_confirmed = 1
+            GROUP BY cpm2.client_id
+        ) bc_lic_agg ON bc_lic_agg.client_id = c.id";
     }
 }

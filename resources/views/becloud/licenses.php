@@ -1,22 +1,17 @@
 <?php
-/** @var array $subscriptions */
+/** @var array $licenses */
 /** @var int $total */
 /** @var int $page */
 /** @var int $perPage */
 /** @var string $search */
 /** @var int $tagId */
-/** @var string $status */
-/** @var string $offerType */
 /** @var string $sortBy */
 /** @var string $sortDir */
 /** @var array|false $lastSync */
 /** @var array $allTags */
 /** @var array $connections */
 
-$today    = new DateTime();
-$in30Days = new DateTime('+30 days');
-
-function bcSortLink(string $col, string $current, string $dir, string $label, array $queryParams): string {
+function bcLicSortLink(string $col, string $current, string $dir, string $label, array $queryParams): string {
     $newDir = ($current === $col && $dir === 'ASC') ? 'DESC' : 'ASC';
     $icon   = $current === $col ? ($dir === 'ASC' ? '↑' : '↓') : '';
     $params = array_merge($queryParams, ['sort' => $col, 'dir' => $newDir]);
@@ -24,7 +19,7 @@ function bcSortLink(string $col, string $current, string $dir, string $label, ar
          . $label . ($icon ? " $icon" : '') . '</a>';
 }
 
-function bcParseTags(?string $raw): array {
+function bcLicParseTags(?string $raw): array {
     if (!$raw) return [];
     return array_map(function($part) {
         [$id, $name, $color] = array_pad(explode(':', $part, 3), 3, '');
@@ -32,14 +27,14 @@ function bcParseTags(?string $raw): array {
     }, explode(';;', $raw));
 }
 
-$qp = compact('search', 'tagId', 'status', 'offerType', 'page', 'perPage');
+$qp = compact('search', 'tagId', 'page', 'perPage', 'sortBy', 'sortDir');
 ?>
 
 <div class="page-sticky-top">
 <div class="d-flex align-items-center justify-content-between mb-3">
     <div>
         <h1 class="h3 mb-0">
-            Abonnements Be-Cloud
+            Licences Be-Cloud
             <span class="badge bg-secondary ms-2"><?= number_format($total) ?></span>
         </h1>
         <?php if ($lastSync): ?>
@@ -54,6 +49,9 @@ $qp = compact('search', 'tagId', 'status', 'offerType', 'page', 'perPage');
         <?php endif; ?>
     </div>
     <div class="d-flex gap-2 align-items-center">
+        <a href="/becloud/customers" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-people me-1"></i>Clients
+        </a>
         <a href="/mapping?provider=becloud" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-link-45deg me-1"></i>Mapping
         </a>
@@ -63,7 +61,7 @@ $qp = compact('search', 'tagId', 'status', 'offerType', 'page', 'perPage');
         <a href="#" class="btn btn-sm btn-outline-secondary" id="btnExportCsv">
             <i class="bi bi-download me-1"></i>CSV
         </a>
-        <button class="btn btn-sm btn-primary" id="btnPageSync" onclick="window.openSyncModal?.(null, 'becloud')">
+        <button class="btn btn-sm btn-primary" onclick="window.openSyncModal?.(null, 'becloud')">
             <i class="bi bi-arrow-clockwise me-1"></i>Sync maintenant
         </button>
     </div>
@@ -71,11 +69,11 @@ $qp = compact('search', 'tagId', 'status', 'offerType', 'page', 'perPage');
 
 <!-- Filtres -->
 <form method="GET" action="/becloud/licenses" class="row g-2 mb-2" id="filterForm">
-    <div class="col-md-4">
+    <div class="col-md-5">
         <div class="input-group input-group-sm">
             <span class="input-group-text"><i class="bi bi-search"></i></span>
             <input type="text" name="search" class="form-control"
-                   placeholder="Client, customer, abonnement…"
+                   placeholder="Client, customer, licence, SKU…"
                    value="<?= htmlspecialchars($search) ?>">
         </div>
     </div>
@@ -87,23 +85,6 @@ $qp = compact('search', 'tagId', 'status', 'offerType', 'page', 'perPage');
                     <?= htmlspecialchars($t['name']) ?>
                 </option>
             <?php endforeach; ?>
-        </select>
-    </div>
-    <div class="col-md-2">
-        <select name="status" class="form-select form-select-sm">
-            <option value="">Tous les statuts</option>
-            <option value="Active"        <?= $status === 'Active' ? 'selected' : '' ?>>Actif</option>
-            <option value="EXPIRING_SOON" <?= $status === 'EXPIRING_SOON' ? 'selected' : '' ?>>Expire bientôt</option>
-            <option value="Suspended"     <?= $status === 'Suspended' ? 'selected' : '' ?>>Suspendu</option>
-            <option value="Deleted"       <?= $status === 'Deleted' ? 'selected' : '' ?>>Supprimé</option>
-        </select>
-    </div>
-    <div class="col-md-2">
-        <select name="offer_type" class="form-select form-select-sm">
-            <option value="">Tous les types</option>
-            <option value="License"      <?= $offerType === 'License' ? 'selected' : '' ?>>License</option>
-            <option value="Subscription" <?= $offerType === 'Subscription' ? 'selected' : '' ?>>Subscription</option>
-            <option value="Usage"        <?= $offerType === 'Usage' ? 'selected' : '' ?>>Usage</option>
         </select>
     </div>
     <input type="hidden" name="sort" value="<?= htmlspecialchars($sortBy) ?>">
@@ -120,68 +101,52 @@ $qp = compact('search', 'tagId', 'status', 'offerType', 'page', 'perPage');
     <table class="table table-hover table-sm align-middle" id="licensesTable">
         <thead class="table-dark small">
             <tr>
-                <th><?= bcSortLink('client', $sortBy, $sortDir, 'Client', $qp) ?></th>
+                <th><?= bcLicSortLink('client', $sortBy, $sortDir, 'Client', $qp) ?></th>
                 <th>Tags</th>
-                <th><?= bcSortLink('customer', $sortBy, $sortDir, 'Customer Be-Cloud', $qp) ?></th>
-                <th><?= bcSortLink('product', $sortBy, $sortDir, 'Abonnement', $qp) ?></th>
-                <th>Type</th>
-                <th class="text-center"><?= bcSortLink('quantity', $sortBy, $sortDir, 'Qté', $qp) ?></th>
-                <th class="text-center"><?= bcSortLink('assigned', $sortBy, $sortDir, 'Assignés', $qp) ?></th>
-                <th class="text-center">Libres</th>
-                <th class="text-center">Utilisation</th>
-                <th class="text-center"><?= bcSortLink('status', $sortBy, $sortDir, 'Statut', $qp) ?></th>
-                <th><?= bcSortLink('end_date', $sortBy, $sortDir, 'Renouvellement', $qp) ?></th>
-                <th>Cycle</th>
+                <th><?= bcLicSortLink('customer', $sortBy, $sortDir, 'Customer Be-Cloud', $qp) ?></th>
+                <th><?= bcLicSortLink('license', $sortBy, $sortDir, 'Licence M365', $qp) ?></th>
+                <th class="text-center"><?= bcLicSortLink('total', $sortBy, $sortDir, 'Total', $qp) ?></th>
+                <th class="text-center"><?= bcLicSortLink('consumed', $sortBy, $sortDir, 'Consommées', $qp) ?></th>
+                <th class="text-center"><?= bcLicSortLink('available', $sortBy, $sortDir, 'Disponibles', $qp) ?></th>
+                <th class="text-center">Suspendues</th>
+                <th class="text-center" style="min-width:90px">Usage %</th>
                 <th class="text-center">Sync</th>
             </tr>
         </thead>
         <tbody>
-            <?php if (empty($subscriptions)): ?>
+            <?php if (empty($licenses)): ?>
             <tr>
-                <td colspan="13" class="text-center text-body-secondary py-5">
-                    <i class="bi bi-cloud-check fs-1 d-block mb-2 opacity-25"></i>
-                    Aucun abonnement trouvé.
+                <td colspan="10" class="text-center text-body-secondary py-5">
+                    <i class="bi bi-person-badge fs-1 d-block mb-2 opacity-25"></i>
+                    Aucune licence trouvée.
                     <?php if (!$lastSync): ?>
-                    <br><button class="btn btn-sm btn-primary mt-2" id="btnFirstSync">
+                    <br><button class="btn btn-sm btn-primary mt-2" onclick="window.openSyncModal?.(null, 'becloud')">
                         <i class="bi bi-arrow-clockwise me-1"></i>Lancer la première sync
                     </button>
                     <?php endif; ?>
                 </td>
             </tr>
             <?php else: ?>
-            <?php foreach ($subscriptions as $sub):
-                $endDate = $sub['end_date'] ? new DateTime($sub['end_date']) : null;
-                $isTrial = (bool)$sub['is_trial'];
-                $expiringSoon = $endDate && $endDate >= $today && $endDate <= $in30Days;
-
-                $statusVal = $sub['status'] ?? '';
-                if ($expiringSoon) {
-                    $statusBadge = '<span class="badge bg-warning text-dark">Expire bientôt</span>';
-                } elseif (in_array($statusVal, ['Suspended', 'Deleted', 'Expired']) || ($endDate && $endDate < $today)) {
-                    $color = match($statusVal) {
-                        'Suspended' => 'bg-warning text-dark',
-                        default     => 'bg-danger',
-                    };
-                    $statusBadge = '<span class="badge ' . $color . '">' . htmlspecialchars($statusVal) . '</span>';
-                } elseif ($statusVal === 'Active') {
-                    $statusBadge = '<span class="badge bg-success">Actif</span>';
-                } else {
-                    $statusBadge = '<span class="badge bg-secondary">' . htmlspecialchars($statusVal ?: '?') . '</span>';
-                }
-
-                $qty    = (int)$sub['quantity'];
-                $used   = (int)$sub['assigned_licenses'];
-                $free   = (int)$sub['seats_free'];
-                $pct    = $qty > 0 ? round($used / $qty * 100) : 0;
-                $barClass = $pct >= 90 ? 'bg-danger' : ($pct >= 70 ? 'bg-warning' : 'bg-success');
-
-                $clientTags = bcParseTags($sub['client_tags_raw'] ?? null);
+            <?php foreach ($licenses as $lic):
+                $total_l    = (int)($lic['total_licenses'] ?? 0);
+                $consumed   = (int)($lic['consumed_licenses'] ?? 0);
+                $available  = (int)($lic['available_licenses'] ?? 0);
+                $suspended  = (int)($lic['suspended_licenses'] ?? 0);
+                $pct        = $total_l > 0 ? round($consumed / $total_l * 100) : 0;
+                $barClass   = $pct >= 90 ? 'bg-danger' : ($pct >= 70 ? 'bg-warning' : 'bg-success');
+                $clientTags = bcLicParseTags($lic['client_tags_raw'] ?? null);
+                $detailUrl  = '/becloud/client/' . (int)$lic['bc_customer_id'];
             ?>
-            <tr>
+            <tr class="cursor-pointer" onclick="window.location='<?= $detailUrl ?>'">
                 <td>
-                    <?php if ($sub['client_name']): ?>
-                        <span class="fw-medium"><?= htmlspecialchars($sub['client_name']) ?></span>
-                        <br><small class="text-body-secondary font-monospace"><?= htmlspecialchars($sub['client_number']) ?></small>
+                    <?php if ($lic['client_name']): ?>
+                        <a href="<?= $detailUrl ?>" class="fw-medium text-decoration-none text-body"
+                           onclick="event.stopPropagation()">
+                            <?= htmlspecialchars($lic['client_name']) ?>
+                        </a>
+                        <?php if ($lic['client_number']): ?>
+                        <br><small class="text-body-secondary font-monospace"><?= htmlspecialchars($lic['client_number']) ?></small>
+                        <?php endif; ?>
                     <?php else: ?>
                         <em class="text-body-secondary small">Non mappé</em>
                     <?php endif; ?>
@@ -200,52 +165,44 @@ $qp = compact('search', 'tagId', 'status', 'offerType', 'page', 'perPage');
                     <?php endif; ?>
                 </td>
                 <td class="small">
-                    <?= htmlspecialchars($sub['customer_name']) ?>
-                    <?php if ($sub['mapping_confirmed'] === '0'): ?>
+                    <a href="<?= $detailUrl ?>" class="text-decoration-none text-body" onclick="event.stopPropagation()">
+                        <?= htmlspecialchars($lic['customer_name']) ?>
+                    </a>
+                    <?php if (isset($lic['mapping_confirmed']) && $lic['mapping_confirmed'] === '0'): ?>
                         <span class="badge bg-warning text-dark ms-1 small">Mapping non confirmé</span>
                     <?php endif; ?>
-                    <?php if ($sub['internal_identifier']): ?>
-                        <br><code class="small text-body-secondary"><?= htmlspecialchars($sub['internal_identifier']) ?></code>
+                    <?php if ($lic['internal_identifier']): ?>
+                        <br><code class="small text-body-secondary"><?= htmlspecialchars($lic['internal_identifier']) ?></code>
                     <?php endif; ?>
                 </td>
                 <td class="small">
-                    <?= htmlspecialchars($sub['subscription_name'] ?? $sub['offer_name'] ?? '—') ?>
-                    <?php if ($isTrial): ?>
-                        <span class="badge bg-info ms-1">Trial</span>
-                    <?php endif; ?>
-                    <?php if ($sub['auto_renewal']): ?>
-                        <span class="badge bg-secondary ms-1" title="Renouvellement automatique">Auto</span>
+                    <?= htmlspecialchars($lic['license_name'] ?? '—') ?>
+                    <?php if ($lic['sku_id']): ?>
+                    <br><code class="small text-body-secondary"><?= htmlspecialchars($lic['sku_id']) ?></code>
                     <?php endif; ?>
                 </td>
-                <td class="small text-body-secondary"><?= htmlspecialchars($sub['offer_type'] ?? '—') ?></td>
-                <td class="text-center"><?= number_format($qty) ?></td>
-                <td class="text-center"><?= number_format($used) ?></td>
-                <td class="text-center <?= $free === 0 && $qty > 0 ? 'text-danger fw-bold' : '' ?>"><?= number_format($free) ?></td>
-                <td style="min-width:80px">
-                    <?php if ($qty > 0): ?>
+                <td class="text-center"><?= number_format($total_l) ?></td>
+                <td class="text-center"><?= number_format($consumed) ?></td>
+                <td class="text-center <?= $available === 0 && $total_l > 0 ? 'text-danger fw-bold' : '' ?>">
+                    <?= number_format($available) ?>
+                </td>
+                <td class="text-center <?= $suspended > 0 ? 'text-warning fw-medium' : 'text-body-secondary' ?>">
+                    <?= $suspended > 0 ? number_format($suspended) : '—' ?>
+                </td>
+                <td style="min-width:90px">
+                    <?php if ($total_l > 0): ?>
                     <div class="progress" style="height:6px">
-                        <div class="progress-bar <?= $barClass ?>" style="width:<?= $pct ?>%" title="<?= $pct ?>%"></div>
+                        <div class="progress-bar <?= $barClass ?>" style="width:<?= min($pct, 100) ?>%" title="<?= $pct ?>%"></div>
                     </div>
                     <small class="text-body-secondary"><?= $pct ?>%</small>
                     <?php else: ?>
                     <small class="text-body-secondary">—</small>
                     <?php endif; ?>
                 </td>
-                <td class="text-center"><?= $statusBadge ?></td>
-                <td class="small <?= $expiringSoon ? 'text-warning' : ($endDate && $endDate < $today ? 'text-danger' : '') ?>">
-                    <?= $sub['end_date'] ? date('d/m/Y', strtotime($sub['end_date'])) : '—' ?>
-                </td>
-                <td class="small text-body-secondary">
-                    <?php
-                    $cycle = $sub['billing_frequency'] ?? '';
-                    $term  = $sub['term_duration'] ?? '';
-                    echo htmlspecialchars(implode(' / ', array_filter([$cycle, $term])) ?: '—');
-                    ?>
-                </td>
                 <td class="text-center">
-                    <small class="text-body-secondary" title="<?= htmlspecialchars($sub['last_sync_at'] ?? '') ?>">
-                        <?php if ($sub['last_sync_at']): ?>
-                            <?= date('d/m H:i', strtotime($sub['last_sync_at'])) ?>
+                    <small class="text-body-secondary" title="<?= htmlspecialchars($lic['last_sync_at'] ?? '') ?>">
+                        <?php if (!empty($lic['last_sync_at'])): ?>
+                            <?= date('d/m H:i', strtotime($lic['last_sync_at'])) ?>
                         <?php else: ?>—<?php endif; ?>
                     </small>
                 </td>
@@ -258,7 +215,7 @@ $qp = compact('search', 'tagId', 'status', 'offerType', 'page', 'perPage');
 
 <?php
 $totalPages = (int)ceil($total / $perPage);
-$queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'status' => $status, 'offer_type' => $offerType, 'sort' => $sortBy, 'dir' => $sortDir, 'perPage' => $perPage]);
+$queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'sort' => $sortBy, 'dir' => $sortDir, 'perPage' => $perPage]);
 ?>
 <div class="page-sticky-bottom d-flex justify-content-between align-items-center">
     <small class="text-body-secondary">
@@ -289,9 +246,12 @@ $queryBase  = http_build_query(['search' => $search, 'tag' => $tagId ?: '', 'sta
     </div>
 </div>
 
-<script>
-document.getElementById('btnFirstSync')?.addEventListener('click', () => window.openSyncModal?.(null, 'becloud'));
+<style>
+.cursor-pointer { cursor: pointer; }
+.cursor-pointer:hover td { background-color: var(--bs-table-hover-bg); }
+</style>
 
+<script>
 document.getElementById('btnExportCsv')?.addEventListener('click', function(e) {
     e.preventDefault();
     const rows = document.querySelectorAll('#licensesTable tr');
@@ -305,7 +265,7 @@ document.getElementById('btnExportCsv')?.addEventListener('click', function(e) {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = 'becloud_abonnements_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.download = 'becloud_licences_' + new Date().toISOString().slice(0,10) + '.csv';
     a.click();
     URL.revokeObjectURL(url);
 });

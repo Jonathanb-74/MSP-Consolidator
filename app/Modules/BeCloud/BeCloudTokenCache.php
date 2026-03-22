@@ -27,23 +27,26 @@ class BeCloudTokenCache
     // Renouveler 60s avant expiration
     private const SAFETY_MARGIN_SECONDS = 60;
 
-    private const TOKEN_ENDPOINT = 'https://login.microsoftonline.com/4e806121-ff28-4286-ab4e-3be0a08f9ce0/oauth2/v2.0/token';
-    private const SCOPE           = 'api://b92a36a4-feb8-4f47-a69c-29a180aa6d0a/.default';
+    // Valeurs publiques Be-Cloud (doc officielle) utilisées comme fallback
+    private const DEFAULT_TENANT_ID = '4e806121-ff28-4286-ab4e-3be0a08f9ce0';
+    private const DEFAULT_SCOPE     = 'api://b92a36a4-feb8-4f47-a69c-29a180aa6d0a/.default';
 
     /**
      * @param array $credentials  Connexion depuis ProviderConfig::findConnection('becloud', $key)
      *                            Doit contenir : client_id, client_secret, key (optionnel)
+     *                            Peut contenir : tenant_id, scope (sinon valeurs publiques Be-Cloud)
      */
     public function __construct(array $credentials)
     {
         $appConfig = require dirname(__DIR__, 3) . '/config/app.php';
 
+        $tenantId        = $credentials['tenant_id'] ?? self::DEFAULT_TENANT_ID;
         $cacheKey        = $credentials['key'] ?? md5($credentials['client_id'] ?? '');
         $this->cacheFile = $appConfig['cache_path'] . '/becloud_token_' . preg_replace('/[^a-z0-9_]/', '_', $cacheKey) . '.json';
-        $this->authUrl   = self::TOKEN_ENDPOINT;
+        $this->authUrl   = "https://login.microsoftonline.com/{$tenantId}/oauth2/v2.0/token";
         $this->clientId  = $credentials['client_id'];
         $this->clientSecret = $credentials['client_secret'];
-        $this->scope     = self::SCOPE;
+        $this->scope     = $credentials['scope'] ?? self::DEFAULT_SCOPE;
         $this->sslVerify = (bool)$appConfig['ssl_verify'];
     }
 
