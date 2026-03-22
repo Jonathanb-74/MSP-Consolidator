@@ -15,9 +15,6 @@
 Thumbs.db
 desktop.ini
 
-# Données persistantes
-/api.brea.me/
-
 # IDEs
 .idea/
 .vscode/
