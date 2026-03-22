@@ -348,8 +348,8 @@ class EsetSyncService
             foreach ($clients as $client) {
                 $alreadyMapped = $this->db->fetchOne(
                     "SELECT id FROM client_provider_mappings
-                     WHERE connection_id = ? AND provider_client_id = ? AND client_id = ? LIMIT 1",
-                    [$this->connectionId, $companyId, (int)$client['id']]
+                     WHERE connection_id = ? AND provider_client_id = ? LIMIT 1",
+                    [$this->connectionId, $companyId]
                 );
                 if (!$alreadyMapped) {
                     $this->db->execute(
@@ -393,8 +393,8 @@ class EsetSyncService
 
         $alreadyMapped = $this->db->fetchOne(
             "SELECT id FROM client_provider_mappings
-             WHERE connection_id = ? AND provider_client_id = ? AND client_id = ? LIMIT 1",
-            [$this->connectionId, $companyId, $bestClientId]
+             WHERE connection_id = ? AND provider_client_id = ? LIMIT 1",
+            [$this->connectionId, $companyId]
         );
         if (!$alreadyMapped) {
             $this->db->execute(

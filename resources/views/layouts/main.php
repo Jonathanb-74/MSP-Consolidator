@@ -114,6 +114,17 @@
 
         <hr>
 
+        <!-- Documentation -->
+        <ul class="nav nav-pills flex-column mb-auto">
+            <li class="nav-item">
+                <a href="/docs" class="nav-link <?= str_starts_with($_SERVER['REQUEST_URI'], '/docs') ? 'active' : '' ?>">
+                    <i class="bi bi-book me-2"></i>Documentation
+                </a>
+            </li>
+        </ul>
+
+        <hr>
+
         <!-- Toggle dark mode -->
         <div class="d-flex align-items-center gap-2 px-1">
             <i class="bi bi-moon-stars-fill small"></i>

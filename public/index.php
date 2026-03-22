@@ -30,6 +30,7 @@ use App\Controllers\TagController;
 use App\Controllers\LicenseController;
 use App\Controllers\MappingController;
 use App\Controllers\SettingsController;
+use App\Controllers\DocsController;
 use App\Modules\Eset\EsetController;
 use App\Modules\BeCloud\BeCloudController;
 use App\Modules\NinjaOne\NinjaOneController;
@@ -115,5 +116,8 @@ $router->post('/settings/normalisation/delete',        [SettingsController::clas
 
 $router->get('/settings/general',                      [SettingsController::class, 'general']);
 $router->post('/settings/general/update',              [SettingsController::class, 'generalUpdate']);
+
+// Documentation
+$router->get('/docs', [DocsController::class, 'index']);
 
 $router->dispatch();

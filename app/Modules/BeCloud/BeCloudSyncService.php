@@ -400,8 +400,8 @@ class BeCloudSyncService
             foreach ($clients as $client) {
                 $alreadyMapped = $this->db->fetchOne(
                     "SELECT id FROM client_provider_mappings
-                     WHERE connection_id = ? AND provider_client_id = ? AND client_id = ? LIMIT 1",
-                    [$this->connectionId, $customerId, (int)$client['id']]
+                     WHERE connection_id = ? AND provider_client_id = ? LIMIT 1",
+                    [$this->connectionId, $customerId]
                 );
                 if (!$alreadyMapped) {
                     $this->db->execute(
@@ -445,8 +445,8 @@ class BeCloudSyncService
 
         $alreadyMapped = $this->db->fetchOne(
             "SELECT id FROM client_provider_mappings
-             WHERE connection_id = ? AND provider_client_id = ? AND client_id = ? LIMIT 1",
-            [$this->connectionId, $customerId, $bestClientId]
+             WHERE connection_id = ? AND provider_client_id = ? LIMIT 1",
+            [$this->connectionId, $customerId]
         );
         if (!$alreadyMapped) {
             $this->db->execute(
