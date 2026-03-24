@@ -81,7 +81,7 @@ class CalendarController extends Controller
                     ON ia.infomaniak_account_id = ip.infomaniak_account_id
                    AND ia.connection_id         = ip.connection_id
                 LEFT JOIN client_provider_mappings cpm
-                    ON cpm.provider_client_id = CAST(ia.infomaniak_account_id AS CHAR) COLLATE utf8mb4_general_ci
+                    ON cpm.provider_client_id = CAST(ia.infomaniak_account_id AS CHAR) COLLATE utf8mb4_unicode_ci
                    AND cpm.connection_id      = ia.connection_id
                    AND cpm.is_confirmed       = 1
                 LEFT JOIN clients c ON c.id = cpm.client_id
