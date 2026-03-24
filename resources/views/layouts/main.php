@@ -12,6 +12,49 @@
     <link rel="stylesheet" href="/assets/css/app.css">
 </head>
 <body>
+<?php
+$_lockEnabled  = (bool)\App\Core\AppSettings::get('screen_lock_enabled', false);
+$_lockMinWidth = (int)\App\Core\AppSettings::get('screen_lock_min_width', 992);
+$_lockMessage  = \App\Core\AppSettings::get('screen_lock_message', 'Cette application est conçue pour être utilisée sur un écran plus large.');
+if ($_lockEnabled):
+?>
+<div id="screen-lock-overlay" style="
+    display:none;
+    position:fixed;
+    inset:0;
+    z-index:99999;
+    background:var(--bs-body-bg,#1a1a2e);
+    color:var(--bs-body-color,#fff);
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding:2rem;
+">
+    <i class="bi bi-layout-sidebar-reverse" style="font-size:3rem;opacity:.4;margin-bottom:1.5rem;display:block"></i>
+    <p class="fw-semibold fs-5 mb-2">Écran trop petit</p>
+    <p class="text-body-secondary mb-0" style="max-width:420px;line-height:1.6">
+        <?= htmlspecialchars($_lockMessage) ?>
+    </p>
+    <p class="text-body-secondary small mt-3 opacity-50">
+        Largeur requise : <?= $_lockMinWidth ?>px &mdash; largeur actuelle : <span id="screen-lock-width">—</span>px
+    </p>
+</div>
+<script>
+(function () {
+    var minW    = <?= $_lockMinWidth ?>;
+    var overlay = document.getElementById('screen-lock-overlay');
+    if (!overlay) return;
+    function check() {
+        var w = window.innerWidth;
+        document.getElementById('screen-lock-width').textContent = w;
+        overlay.style.display = w < minW ? 'flex' : 'none';
+    }
+    check();
+    window.addEventListener('resize', check);
+})();
+</script>
+<?php endif; ?>
 
 <!-- ── Sidebar ────────────────────────────────────────────────── -->
 <div class="d-flex" id="wrapper">

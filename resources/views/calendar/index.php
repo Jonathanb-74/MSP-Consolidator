@@ -14,8 +14,8 @@
 /** @var array  $monthNames */
 /** @var string $todayStr */
 
-$providerLabel = ['eset' => 'ESET', 'becloud' => 'Be-Cloud', 'infomaniak' => 'Infomaniak'];
-$providerBadge = ['eset' => 'bg-primary', 'becloud' => 'bg-success', 'infomaniak' => 'bg-warning text-dark'];
+$providerLabel = ['becloud' => 'Be-Cloud', 'infomaniak' => 'Infomaniak'];
+$providerBadge = ['becloud' => 'bg-success', 'infomaniak' => 'bg-warning text-dark'];
 
 // Group events by YYYY-MM for list view
 $byMonth = [];
@@ -167,7 +167,6 @@ foreach ($byDate as $date => $evs) {
             <label class="form-label form-label-sm mb-1">Fournisseur</label>
             <select name="provider" class="form-select form-select-sm">
                 <option value="all"        <?= $filters['provider'] === 'all'        ? 'selected' : '' ?>>Tous les fournisseurs</option>
-                <option value="eset"       <?= $filters['provider'] === 'eset'       ? 'selected' : '' ?>>ESET</option>
                 <option value="becloud"    <?= $filters['provider'] === 'becloud'    ? 'selected' : '' ?>>Be-Cloud</option>
                 <option value="infomaniak" <?= $filters['provider'] === 'infomaniak' ? 'selected' : '' ?>>Infomaniak</option>
             </select>
@@ -405,37 +404,49 @@ foreach ($byDate as $date => $evs) {
         if (!evs || !evs.length) return;
 
         // Format date as "Lundi 15 mars 2026"
-        const d     = new Date(date + 'T00:00:00');
-        const days  = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+        const d      = new Date(date + 'T00:00:00');
+        const days   = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
         const mNames = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-        const title = days[d.getDay()] + ' ' + d.getDate() + ' ' + mNames[d.getMonth()] + ' ' + d.getFullYear();
+        const title  = days[d.getDay()] + ' ' + d.getDate() + ' ' + mNames[d.getMonth()] + ' ' + d.getFullYear();
 
         document.getElementById('calModalTitle').innerHTML =
             '<i class="bi bi-calendar3 me-2 text-secondary"></i>' + title +
             ' <span class="badge bg-secondary fw-normal ms-1">' + evs.length + '</span>';
 
-        let html = '';
+        // Group events by client (internal name, fallback to provider client)
+        const groups = {};
         evs.forEach(function (ev) {
-            const clientLine = ev.client
-                ? '<span class="fw-semibold">' + escHtml(ev.client) + '</span>'
-                  + (ev.provClient && ev.provClient !== ev.client
-                      ? ' <span class="text-muted small">(' + escHtml(ev.provClient) + ')</span>'
-                      : '')
-                : '<span class="fst-italic text-muted">' + escHtml(ev.provClient) + '</span>';
+            const key = ev.client || ('— ' + ev.provClient);
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(ev);
+        });
 
-            html += '<div class="d-flex align-items-start gap-3 px-3 py-2 border-bottom">'
-                  +   '<span class="badge ' + ev.pBadge + ' mt-1 text-nowrap">' + escHtml(ev.pLabel) + '</span>'
-                  +   '<div class="flex-grow-1 min-w-0">'
-                  +     '<div class="fw-semibold text-truncate" title="' + escAttr(ev.item) + '">' + escHtml(ev.item) + '</div>'
-                  +     '<div class="small">' + clientLine + '</div>'
-                  +   '</div>'
-                  +   '<div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">'
-                  +     urgBadge(ev.daysLeft, ev.expired)
-                  +     '<a href="' + escAttr(ev.link) + '" class="btn btn-outline-secondary btn-sm py-0 px-2" title="Voir le détail">'
-                  +       '<i class="bi bi-arrow-right-short"></i>'
-                  +     '</a>'
-                  +   '</div>'
-                  + '</div>';
+        let html = '';
+        Object.entries(groups).forEach(function ([clientKey, clientEvs]) {
+            // Client section header
+            const isInternal = clientEvs[0].client !== '';
+            html += '<div class="px-3 pt-3 pb-1">'
+                  +   '<span class="fw-semibold">' + escHtml(clientKey) + '</span>';
+            if (isInternal && clientEvs[0].provClient && clientEvs[0].provClient !== clientEvs[0].client) {
+                html += ' <span class="text-muted small">(' + escHtml(clientEvs[0].provClient) + ')</span>';
+            }
+            html += '</div>';
+
+            // Events for this client
+            clientEvs.forEach(function (ev) {
+                html += '<div class="d-flex align-items-center gap-3 px-3 py-2 border-bottom ms-2">'
+                      +   '<span class="badge ' + ev.pBadge + ' text-nowrap flex-shrink-0">' + escHtml(ev.pLabel) + '</span>'
+                      +   '<div class="flex-grow-1 min-w-0">'
+                      +     '<div class="text-truncate small" title="' + escAttr(ev.item) + '">' + escHtml(ev.item) + '</div>'
+                      +   '</div>'
+                      +   '<div class="d-flex align-items-center gap-1 flex-shrink-0">'
+                      +     urgBadge(ev.daysLeft, ev.expired)
+                      +     '<a href="' + escAttr(ev.link) + '" class="btn btn-outline-secondary btn-sm py-0 px-2" title="Voir le détail">'
+                      +       '<i class="bi bi-arrow-right-short"></i>'
+                      +     '</a>'
+                      +   '</div>'
+                      + '</div>';
+            });
         });
 
         document.getElementById('calModalBody').innerHTML = html;

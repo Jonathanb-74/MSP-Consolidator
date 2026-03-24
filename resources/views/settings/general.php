@@ -104,6 +104,106 @@ foreach ($deviceSettings as $k):
 </div>
 
 <?php
+$screenLockSettings = ['screen_lock_enabled', 'screen_lock_min_width', 'screen_lock_message'];
+$hasScreenLock = !empty(array_filter($screenLockSettings, fn($k) => isset($settings[$k])));
+?>
+
+<div class="card mb-4">
+    <div class="card-header d-flex align-items-center gap-2">
+        <i class="bi bi-layout-sidebar-reverse text-info fs-5"></i>
+        <span class="fw-semibold">Affichage — Blocage petit écran</span>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0 align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th class="ps-3" style="width:40%">Paramètre</th>
+                    <th>Valeur</th>
+                    <th style="width:80px"></th>
+                </tr>
+            </thead>
+            <tbody>
+<?php if (!$hasScreenLock): ?>
+                <tr>
+                    <td colspan="3" class="text-center text-body-secondary py-3">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Exécutez la migration <code>010_screen_lock_settings.sql</code> pour initialiser ces paramètres.
+                    </td>
+                </tr>
+<?php else: ?>
+<?php foreach ($screenLockSettings as $k):
+    if (!isset($settings[$k])) continue;
+    $s = $settings[$k];
+?>
+                <tr id="row-<?= htmlspecialchars($k) ?>">
+                    <td class="ps-3">
+                        <div class="fw-semibold small"><?= htmlspecialchars($s['label']) ?></div>
+                        <?php if ($s['description']): ?>
+                        <div class="text-body-secondary" style="font-size:.8em"><?= htmlspecialchars($s['description']) ?></div>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <span class="value-display" id="display-<?= htmlspecialchars($k) ?>">
+                            <?php if ($s['type'] === 'boolean'): ?>
+                                <?php if ($s['value'] === '1'): ?>
+                                    <span class="badge bg-success">Activé</span>
+                                <?php else: ?>
+                                    <span class="badge bg-secondary">Désactivé</span>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <strong><?= htmlspecialchars($s['value']) ?></strong>
+                                <?php if ($k === 'screen_lock_min_width'): ?>
+                                    <span class="text-body-secondary small ms-1">px</span>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                        </span>
+                        <span class="value-edit d-none" id="edit-<?= htmlspecialchars($k) ?>">
+                            <div class="d-flex align-items-center gap-2">
+                                <?php if ($s['type'] === 'boolean'): ?>
+                                <select class="form-select form-select-sm" style="width:130px"
+                                        id="input-<?= htmlspecialchars($k) ?>">
+                                    <option value="1" <?= $s['value'] === '1' ? 'selected' : '' ?>>Activé</option>
+                                    <option value="0" <?= $s['value'] !== '1' ? 'selected' : '' ?>>Désactivé</option>
+                                </select>
+                                <?php elseif ($s['type'] === 'integer'): ?>
+                                <input type="number" class="form-control form-control-sm" min="320" max="3840"
+                                       style="width:90px"
+                                       id="input-<?= htmlspecialchars($k) ?>"
+                                       value="<?= htmlspecialchars($s['value']) ?>">
+                                <span class="text-body-secondary small">px</span>
+                                <?php else: ?>
+                                <input type="text" class="form-control form-control-sm"
+                                       style="max-width:420px"
+                                       id="input-<?= htmlspecialchars($k) ?>"
+                                       value="<?= htmlspecialchars($s['value']) ?>">
+                                <?php endif; ?>
+                                <button class="btn btn-primary btn-sm"
+                                        onclick="saveSettings('<?= htmlspecialchars($k) ?>')">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary btn-sm"
+                                        onclick="cancelEdit('<?= htmlspecialchars($k) ?>')">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </span>
+                    </td>
+                    <td class="text-end pe-3">
+                        <button class="btn btn-outline-secondary btn-sm py-0"
+                                title="Modifier"
+                                onclick="startEdit('<?= htmlspecialchars($k) ?>')">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                    </td>
+                </tr>
+<?php endforeach; ?>
+<?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php
 $maxExec    = (int)ini_get('max_execution_time');
 $maxInput   = (int)ini_get('max_input_time');
 $memLimit   = ini_get('memory_limit');
@@ -248,8 +348,15 @@ async function saveSettings(key) {
 
     // Mettre à jour l'affichage
     const display = document.getElementById('display-' + key);
+    const badge   = display.querySelector('.badge');
     const strong  = display.querySelector('strong');
-    if (strong) strong.textContent = value;
+    if (badge) {
+        // booléen
+        badge.textContent = value === '1' ? 'Activé' : 'Désactivé';
+        badge.className   = value === '1' ? 'badge bg-success' : 'badge bg-secondary';
+    } else if (strong) {
+        strong.textContent = value;
+    }
 
     cancelEdit(key);
     showAlert('✅ Paramètre enregistré.');

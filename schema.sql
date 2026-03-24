@@ -1,7 +1,7 @@
 -- ============================================================
 -- MSP Consolidator — Schéma SQL complet
 -- MySQL 8.0+ / MariaDB 10.4+
--- Intègre toutes les migrations 001 → 008
+-- Intègre toutes les migrations 001 → 009
 -- ============================================================
 
 SET NAMES utf8mb4;
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS `client_provider_mappings` (
     `updated_at`           TIMESTAMP         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`client_id`)   REFERENCES `clients`(`id`)   ON DELETE CASCADE,
     FOREIGN KEY (`provider_id`) REFERENCES `providers`(`id`),
-    UNIQUE KEY `uq_provider_client` (`provider_id`, `provider_client_id`)
+    UNIQUE KEY `uq_connection_client` (`connection_id`, `provider_client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `sync_logs` (
@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS `be_cloud_subscriptions` (
     `term_duration`            VARCHAR(50)  NULL COMMENT 'P1M, P1Y, P3Y, etc.',
     `is_trial`                 TINYINT(1)   NOT NULL DEFAULT 0,
     `auto_renewal`             TINYINT(1)   NOT NULL DEFAULT 0,
+    `provider_instance_id`     VARCHAR(36)  NULL     COMMENT 'ID instance fournisseur CloudCockpit, requis pour endpoint licenses (Migration 009)',
     `raw_data`                 JSON         NULL,
     `last_sync_at`             TIMESTAMP    NULL DEFAULT NULL,
     `created_at`               TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -312,7 +313,49 @@ INSERT IGNORE INTO `app_settings` (`key`, `value`, `label`, `description`, `type
     ('device_active_days', '2',
      'Seuil d''inactivité équipements (jours)',
      'Nombre de jours sans contact au-delà duquel un équipement est affiché comme inactif. Utilisé pour NinjaOne et ESET.',
-     'integer');
+     'integer'),
+
+    ('screen_lock_enabled', '0',
+     'Blocage petits écrans',
+     'Affiche un message bloquant lorsque la largeur du navigateur est inférieure au seuil défini.',
+     'boolean'),
+
+    ('screen_lock_min_width', '992',
+     'Largeur minimale (px)',
+     'En dessous de cette largeur de fenêtre (en pixels), l''accès est bloqué si le blocage est activé.',
+     'integer'),
+
+    ('screen_lock_message',
+     'Cette application est conçue pour être utilisée sur un écran plus large. Veuillez vous connecter depuis un ordinateur ou agrandir la fenêtre de votre navigateur.',
+     'Message affiché sur petit écran',
+     'Texte affiché à l''utilisateur lorsque son écran est trop petit.',
+     'string');
+
+-- ============================================================
+-- MODULE BE-CLOUD — Licences M365 (Migration 009)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS `be_cloud_licenses` (
+    `id`                   INT UNSIGNED      NOT NULL AUTO_INCREMENT,
+    `connection_id`        SMALLINT UNSIGNED NOT NULL,
+    `be_cloud_customer_id` VARCHAR(36)       NOT NULL COMMENT 'UUID customer Be-Cloud',
+    `sku_id`               VARCHAR(100)      NOT NULL COMMENT 'Identifiant SKU licence',
+    `name`                 VARCHAR(255)      NULL     COMMENT 'Nom lisible de la licence',
+    `total_licenses`       INT               NOT NULL DEFAULT 0,
+    `consumed_licenses`    INT               NOT NULL DEFAULT 0,
+    `available_licenses`   INT               NOT NULL DEFAULT 0,
+    `suspended_licenses`   INT               NOT NULL DEFAULT 0,
+    `is_selected`          TINYINT(1)        NOT NULL DEFAULT 0,
+    `raw_data`             JSON              NULL,
+    `last_sync_at`         TIMESTAMP         NULL DEFAULT NULL,
+    `created_at`           TIMESTAMP         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`           TIMESTAMP         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_becloud_license` (`connection_id`, `be_cloud_customer_id`, `sku_id`),
+    INDEX `idx_becloud_customer_lic` (`be_cloud_customer_id`),
+    FOREIGN KEY (`connection_id`) REFERENCES `provider_connections`(`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Licences M365/cloud Be-Cloud par customer (endpoint /licenses)';
 
 -- ============================================================
 -- INFOMANIAK (migration 008)

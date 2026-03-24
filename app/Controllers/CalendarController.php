@@ -19,7 +19,7 @@ class CalendarController extends Controller
         // --- Filters ---
         $mode     = in_array($_GET['mode'] ?? '', ['calendar', 'list']) ? $_GET['mode'] : 'calendar';
         $provider = $_GET['provider'] ?? 'all';
-        if (!in_array($provider, ['eset', 'becloud', 'infomaniak', 'all'])) {
+        if (!in_array($provider, ['becloud', 'infomaniak', 'all'])) {
             $provider = 'all';
         }
         $clientId = max(0, (int)($_GET['client_id'] ?? 0));
@@ -37,35 +37,11 @@ class CalendarController extends Controller
 
         // --- Horizon SQL fragments (integer-cast, SQL-safe) ---
         $horizonDays = ($horizon !== 'all') ? (int)$horizon : 0;
-        $hEset  = ($horizon !== 'all') ? "AND el.expiration_date <= DATE_ADD(CURDATE(), INTERVAL {$horizonDays} DAY)" : '';
-        $hBc    = ($horizon !== 'all') ? "AND bs.end_date         <= DATE_ADD(CURDATE(), INTERVAL {$horizonDays} DAY)" : '';
-        $hInfo  = ($horizon !== 'all') ? "AND ip.expired_at       <= UNIX_TIMESTAMP(DATE_ADD(CURDATE(), INTERVAL {$horizonDays} DAY))" : '';
+        $hBc    = ($horizon !== 'all') ? "AND bs.end_date   <= DATE_ADD(CURDATE(), INTERVAL {$horizonDays} DAY)" : '';
+        $hInfo  = ($horizon !== 'all') ? "AND ip.expired_at <= UNIX_TIMESTAMP(DATE_ADD(CURDATE(), INTERVAL {$horizonDays} DAY))" : '';
 
-        // --- Build UNION parts ---
+        // --- Build UNION parts (Be-Cloud + Infomaniak only — ESET has no real expiry dates) ---
         $parts = [];
-
-        if ($provider === 'all' || $provider === 'eset') {
-            $parts[] = "
-                SELECT
-                    'eset'                          AS provider,
-                    el.expiration_date              AS expiry_date,
-                    el.product_name                 AS item_name,
-                    ec.name                         AS provider_client_name,
-                    COALESCE(c.id, 0)               AS client_id,
-                    COALESCE(c.name, '')            AS client_name,
-                    el.id                           AS item_id
-                FROM eset_licenses el
-                JOIN eset_companies ec
-                    ON ec.eset_company_id = el.eset_company_id
-                LEFT JOIN client_provider_mappings cpm
-                    ON cpm.provider_client_id = ec.eset_company_id
-                   AND cpm.connection_id      = ec.connection_id
-                   AND cpm.is_confirmed       = 1
-                LEFT JOIN clients c ON c.id = cpm.client_id
-                WHERE el.expiration_date IS NOT NULL
-                  AND el.expiration_date >= CURDATE()
-                  $hEset";
-        }
 
         if ($provider === 'all' || $provider === 'becloud') {
             $parts[] = "

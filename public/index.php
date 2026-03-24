@@ -22,6 +22,29 @@ if ($appConfig['debug']) {
 // Démarrage session
 session_start();
 
+// ── Vérification de la configuration (setup guard) ────────────────────────────
+use App\Core\SetupPage;
+
+// 1. Fichier config/database.php présent ?
+if (!file_exists(APP_ROOT . '/config/database.php')) {
+    SetupPage::show('config');
+}
+
+// 2. Connexion à la base de données possible ?
+try {
+    \App\Core\Database::getInstance();
+} catch (\Throwable $e) {
+    SetupPage::show('connection', $e->getMessage());
+}
+
+// 3. Tables core présentes (schema.sql importé) ?
+try {
+    \App\Core\Database::getInstance()->fetchOne("SELECT id FROM `clients` LIMIT 1");
+} catch (\Throwable $e) {
+    SetupPage::show('schema', $e->getMessage());
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Routeur
 use App\Core\Router;
 use App\Controllers\DashboardController;
