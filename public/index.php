@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 define('APP_ROOT', dirname(__DIR__));
 
+// Vérification Composer — avant tout require pour éviter le fatal error
+if (!file_exists(APP_ROOT . '/vendor/autoload.php')) {
+    require APP_ROOT . '/app/Core/SetupPage.php';
+    \App\Core\SetupPage::show('composer');
+}
+
 // Autoloader Composer
 require APP_ROOT . '/vendor/autoload.php';
 

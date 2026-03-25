@@ -19,12 +19,13 @@ class SetupPage
             : false;
 
         $steps = [
-            'config'     => ['Fichier de configuration',     'config/database.php correctement renseigné'],
+            'composer'   => ['Dépendances Composer',          'vendor/ généré via composer install'],
+            'config'     => ['Fichier de configuration',      'config/database.php correctement renseigné'],
             'connection' => ['Connexion à la base de données', 'Serveur MySQL / MariaDB accessible'],
             'schema'     => ['Schéma de la base de données',  'Tables créées via schema.sql'],
         ];
 
-        $order = ['config', 'connection', 'schema'];
+        $order = ['composer', 'config', 'connection', 'schema'];
         $failedIndex = array_search($step, $order, true);
 
         // Construire les étapes avec statut
@@ -56,10 +57,11 @@ class SetupPage
 
         // Instructions selon l'étape
         $instructions = match ($step) {
-            'config' => self::instrConfig(),
+            'composer'   => self::instrComposer(),
+            'config'     => self::instrConfig(),
             'connection' => self::instrConnection(),
-            'schema' => self::instrSchema(),
-            default => '',
+            'schema'     => self::instrSchema(),
+            default      => '',
         };
 
         $debugBlock = '';
@@ -131,6 +133,25 @@ HTML;
     }
 
     // ── Instructions par étape ────────────────────────────────────────────────
+
+    private static function instrComposer(): string
+    {
+        return <<<HTML
+<p class="mb-2">Le dossier <code>vendor/</code> est absent. Les dépendances PHP n'ont pas encore été installées.</p>
+<ol class="mb-0">
+    <li class="mb-2">
+        Assurez-vous que <strong>Composer</strong> est installé sur le serveur&nbsp;:
+        <pre class="bg-body-secondary rounded p-2 mt-1 small mb-0">composer --version</pre>
+        Sinon, téléchargez-le sur <code>getcomposer.org</code>.
+    </li>
+    <li class="mb-2">
+        Depuis la racine du projet, lancez&nbsp;:
+        <pre class="bg-body-secondary rounded p-2 mt-1 small mb-0">composer install --no-dev --optimize-autoloader</pre>
+    </li>
+    <li>Rechargez la page une fois l'installation terminée.</li>
+</ol>
+HTML;
+    }
 
     private static function instrConfig(): string
     {
